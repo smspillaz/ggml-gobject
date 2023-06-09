@@ -689,7 +689,134 @@ ggml_token_dictionary_unref (GGMLTokenDictionary *dictionary)
     }
 }
 
+/**
+ * ggml_token_dictionary_lookup_extended:
+ * @token_dictionary: A #GGMLTokenDictionary
+ * @key: A key to look up in the @token_dictionary
+ * @out_token: (out): The corresponding token
+ *
+ * Returns: %TRUE if the token was found in the dictionary and @value set
+ *          %FALSE otherwise.
+ */
+gboolean
+ggml_token_dictionary_lookup_extended (GGMLTokenDictionary *token_dictionary,
+                                       const char *key,
+                                       int32_t *out_token)
+{
+  gpointer lookup_token = NULL;
+
+  if (g_hash_table_lookup_extended (token_dictionary->word_to_idx, key, NULL, (gpointer *) &lookup_token))
+    {
+      *out_token = GPOINTER_TO_INT (lookup_token);
+      return TRUE;
+    }
+
+  return FALSE;
+}
+
 G_DEFINE_BOXED_TYPE (GGMLTokenDictionary, ggml_token_dictionary, ggml_token_dictionary_ref, ggml_token_dictionary_unref)
+
+#define GPT_SPLIT_REGEX "('s|'t|'re|'ve|'m|'ll|'d| ?[[:alpha:]]+| ?[[:digit:]]+| ?[^\\s[:alpha:][:digit:]]+|\\s+(?!\\S)|\\s+)"
+
+GPtrArray *
+ggml_iterate_words_in_regex (GRegex *regex, const char *string)
+{
+  g_autoptr(GMatchInfo) match_info = NULL;
+  g_autoptr(GPtrArray) words_ptr_array = g_ptr_array_new_full (0, g_free);
+  g_regex_match (regex, string, 0, &match_info);
+  while (g_match_info_matches (match_info))
+    {
+      gchar *word = g_match_info_fetch (match_info, 0);
+      if (word != NULL)
+        {
+          g_ptr_array_add (words_ptr_array, word);
+        }
+      g_match_info_next (match_info, NULL);
+    }
+
+  return g_steal_pointer (&words_ptr_array);
+}
+
+/**
+ * ggml_gpt_tokenize:
+ * @token_dictionary: A #GGMLTokenDictionary of tokens
+ * @string: A string to tokenize
+ * @out_tokens: (out) (array length=out_size): Output tokens from the string
+ * @error: A #GError
+ *
+ * Returns: %TRUE with @out_tokens and @out_size set on success, %FALSE
+ *          with @error set otherwise.
+ */
+gboolean
+ggml_gpt_tokenize (GGMLTokenDictionary *token_dictionary,
+                   const char *string,
+                   int32_t **out_tokens,
+                   size_t  *out_size,
+                   GError **error)
+{
+  /* Split first into words */
+  g_autoptr(GArray) tokens_array = NULL;
+  g_autoptr(GRegex) regex = NULL;
+  g_autoptr(GPtrArray) words_ptr_array = NULL;
+
+  regex = g_regex_new (GPT_SPLIT_REGEX,
+                       G_REGEX_DEFAULT,
+                       G_REGEX_MATCH_DEFAULT,
+                       error);
+
+  if (regex == NULL)
+    {
+      return FALSE;
+    }
+
+  words_ptr_array = ggml_iterate_words_in_regex (regex, string);
+
+  /* Now we have to find corresponding tokens in the dictionary */
+  tokens_array = g_array_sized_new (FALSE,
+                                    TRUE,
+                                    sizeof (int32_t),
+                                    words_ptr_array->len);
+
+  for (size_t i = 0; i < words_ptr_array->len; ++i)
+    {
+      const char *word = words_ptr_array->pdata[i];
+      size_t word_len = strlen(word);
+
+      for (size_t word_start = 0; word_start < word_len;)
+        {
+          for (size_t word_end = word_len - 1;
+               word_end >= word_start;
+               --word_end)
+            {
+              /* Can't use autofree here because we're in a loop */
+              char *candidate = g_strndup (&word[word_start],
+                                           word_end - word_start + 1);
+              int32_t token = 0;
+
+              if (ggml_token_dictionary_lookup_extended (token_dictionary,
+                                                         candidate,
+                                                         &token))
+                {
+                  g_array_append_vals (tokens_array, &token, 1);
+                  word_start = word_end + 1;
+                  g_free (candidate);
+                  break;
+                }
+              else if (word_end == word_start)
+                {
+                  ++word_start;
+                  g_free (candidate);
+                  break;
+                }
+
+              g_free (candidate);
+            }
+        }
+    }
+
+  *out_tokens = g_array_steal (tokens_array, out_size);
+  return TRUE;
+}
 
 /**
  * ggml_language_model_new:

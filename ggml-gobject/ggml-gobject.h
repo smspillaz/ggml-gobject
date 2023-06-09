@@ -207,4 +207,11 @@ ggml_context_new_model_from_flattened_desc (GGMLContext *context,
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLContext, ggml_context_unref)
 
+
+gboolean ggml_gpt_tokenize (GGMLTokenDictionary *token_dictionary,
+                            const char *string,
+                            int32_t **out_tokens,
+                            size_t  *out_size,
+                            GError **error);
+
 G_END_DECLS
