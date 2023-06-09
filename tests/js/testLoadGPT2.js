@@ -61,6 +61,15 @@ function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
 }
 
 describe('GGML GPT2', function() {
+  it('can tokenize a simple string', function() {
+    const token_dictionary = GGML.TokenDictionary.new([
+      "ab",
+      "bc",
+      "abbcd"
+    ]);
+    [result, tokenized] = GGML.gpt_tokenize(token_dictionary, "abbcdabbc ab de bc");
+    expect(tokenized).toEqual([2, 0, 1, 0, 1]);
+  });
   it('makes the flattened dict correctly', () => {
     const model_desc = GGML.ModelDescNode.new(
       null,
