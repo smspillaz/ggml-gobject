@@ -23,6 +23,11 @@
 #include <ggml-gobject/ggml-gobject.h>
 #include <gio/gio.h>
 
+typedef struct _GGMLModelDescLeafExtended  {
+  GGMLModelDescLeaf base;
+  size_t ref_count;
+} GGMLModelDescLeafExtended;
+
 /**
  * ggml_model_desc_leaf_new:
  * @dimensions: (array length=n_dim): An #int64_t array with leaf node dimensions
@@ -34,50 +39,58 @@
 GGMLModelDescLeaf *
 ggml_model_desc_leaf_new (int64_t *dimensions, size_t n_dim, GGMLDataType type)
 {
-  GGMLModelDescLeaf *leaf = g_new0 (GGMLModelDescLeaf, 1);
-  leaf->dimensions = g_new0 (int64_t, n_dim);
-  leaf->n_dim = n_dim;
-  leaf->type = type;
+  GGMLModelDescLeafExtended *leaf = (GGMLModelDescLeafExtended *) g_new0 (GGMLModelDescLeafExtended, 1);
+  leaf->base.dimensions = g_new0 (int64_t, n_dim);
+  leaf->base.n_dim = n_dim;
+  leaf->base.type = type;
+  leaf->ref_count = 1;
 
-  memcpy (leaf->dimensions, dimensions, sizeof(int64_t) * leaf->n_dim);
+  memcpy (leaf->base.dimensions, dimensions, sizeof(int64_t) * leaf->base.n_dim);
 
-  return leaf;
+  return (GGMLModelDescLeaf *) leaf;
 }
 
 /**
- * ggml_model_desc_leaf_copy:
+ * ggml_model_desc_leaf_ref:
  * @leaf: (transfer none): A #GGMLModelDescLeaf
  *
  * Returns: (transfer full): A new #GGMLModelDescLeaf
  */
 GGMLModelDescLeaf *
-ggml_model_desc_leaf_copy (GGMLModelDescLeaf *src)
+ggml_model_desc_leaf_ref (GGMLModelDescLeaf *src)
 {
-  return ggml_model_desc_leaf_new (src->dimensions, src->n_dim, src->type);
+  GGMLModelDescLeafExtended *ext = (GGMLModelDescLeafExtended *) src;
+
+  ++ext->ref_count;
+  return src;
 }
 
 void
-ggml_model_desc_leaf_free (GGMLModelDescLeaf *leaf)
+ggml_model_desc_leaf_unref (GGMLModelDescLeaf *leaf)
 {
-  g_clear_pointer (&leaf->dimensions, g_free);
-  g_clear_pointer (&leaf, g_free);
+  GGMLModelDescLeafExtended *ext = (GGMLModelDescLeafExtended *) leaf;
+
+  if (--ext->ref_count == 0)
+    {
+      g_clear_pointer (&ext->base.dimensions, g_free);
+      g_clear_pointer (&ext, g_free);
+    }
 }
 
 G_DEFINE_BOXED_TYPE (GGMLModelDescLeaf,
                      ggml_model_desc_leaf,
-                     ggml_model_desc_leaf_copy,
-                     ggml_model_desc_leaf_free);
+                     ggml_model_desc_leaf_ref,
+                     ggml_model_desc_leaf_unref);
 
-static gpointer
-ggml_model_desc_node_list_copy_func (gpointer src, gpointer user_data)
-{
-  return (gpointer) ggml_model_desc_node_copy ((GGMLModelDescNode *) src);
-}
+typedef struct _GGMLModelDescNodeExtended {
+  GGMLModelDescNode base;
+  size_t ref_count;
+} GGMLModelDescNodeExtended;
 
 static GHashTable *
 copy_hash_table (GHashTable *src, GCopyFunc key_copy_func, gpointer key_copy_func_user_data, GCopyFunc value_copy_func, gpointer value_copy_func_user_data)
 {
-  GHashTable *dst = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_model_desc_node_free);
+  GHashTable *dst = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_model_desc_node_unref);
 
   GHashTableIter iter;
   gpointer key, value;
@@ -103,27 +116,28 @@ copy_hash_table (GHashTable *src, GCopyFunc key_copy_func, gpointer key_copy_fun
 GGMLModelDescNode *
 ggml_model_desc_node_new (GGMLModelDescLeaf *leaf, GHashTable *children)
 {
-  GGMLModelDescNode *node = g_new0 (GGMLModelDescNode, 1);
+  GGMLModelDescNodeExtended *node = (GGMLModelDescNodeExtended *) g_new0 (GGMLModelDescNodeExtended, 1);
 
   if (leaf != NULL)
     {
-      node->leaf = ggml_model_desc_leaf_copy (leaf);
+      node->base.leaf = ggml_model_desc_leaf_ref (leaf);
     }
 
   if (children != NULL)
     {
-      node->children = copy_hash_table (children,
+      node->base.children = copy_hash_table (children,
                                         (GCopyFunc) g_strdup,
                                         NULL,
-                                        (GCopyFunc) ggml_model_desc_node_list_copy_func,
+                                        (GCopyFunc) ggml_model_desc_node_ref,
                                         NULL);
     }
   else
     {
-      node->children = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_model_desc_node_free);
+      node->base.children = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_model_desc_node_unref);
     }
 
-  return node;
+  node->ref_count = 1;
+  return (GGMLModelDescNode *) node;
 }
 
 /**
@@ -137,9 +151,8 @@ ggml_model_desc_node_new (GGMLModelDescLeaf *leaf, GHashTable *children)
 GGMLModelDescNode *
 ggml_model_desc_node_new_leaf (int64_t *dimensions, size_t n_dim, GGMLDataType type)
 {
-  GGMLModelDescLeaf *leaf = ggml_model_desc_leaf_new (dimensions, n_dim, type);
+  g_autoptr(GGMLModelDescLeaf) leaf = ggml_model_desc_leaf_new (dimensions, n_dim, type);
   GGMLModelDescNode *node = ggml_model_desc_node_new (leaf, NULL);
-  g_free (leaf);
 
   return node;
 }
@@ -149,7 +162,7 @@ ggml_model_node_flatten_recurse (GHashTable *table, GGMLModelDescNode *current_n
 {
   if (current_node->leaf != NULL)
     {
-      g_hash_table_insert (table, g_strdup (current_path), ggml_model_desc_leaf_copy (current_node->leaf));
+      g_hash_table_insert (table, g_strdup (current_path), ggml_model_desc_leaf_ref (current_node->leaf));
     }
 
   if (current_node->children != NULL)
@@ -179,14 +192,14 @@ ggml_model_node_flatten_recurse (GHashTable *table, GGMLModelDescNode *current_n
 GHashTable *
 ggml_model_desc_node_flatten (GGMLModelDescNode *node)
 {
-  GHashTable *ht = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_model_desc_leaf_free);
+  GHashTable *ht = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_model_desc_leaf_unref);
   ggml_model_node_flatten_recurse (ht, node, NULL);
 
   return ht;
 }
 
 /**
- * ggml_model_desc_node_copy:
+ * ggml_model_desc_node_ref:
  * @node: (transfer none): A #GGMLModelDescNode
  *
  * Recursively copies the @node
@@ -194,33 +207,37 @@ ggml_model_desc_node_flatten (GGMLModelDescNode *node)
  * Returns: (transfer full): A new #GGMLModelDescNode
  */
 GGMLModelDescNode *
-ggml_model_desc_node_copy (GGMLModelDescNode *src)
+ggml_model_desc_node_ref (GGMLModelDescNode *src)
 {
-  return ggml_model_desc_node_new (src->leaf, src->children);
+  GGMLModelDescNodeExtended *ext = (GGMLModelDescNodeExtended *) src;
+  ++ext->ref_count;
+
+  return src;
 }
 
 /**
- * ggml_model_desc_node_free:
+ * ggml_model_desc_node_unref:
  * @node: (transfer full): A #GGMLModelDescNode
  *
  * Recursively frees the @node
  */
 void
-ggml_model_desc_node_free (GGMLModelDescNode *node)
+ggml_model_desc_node_unref (GGMLModelDescNode *node)
 {
-  g_clear_pointer (&node->leaf, g_free);
+  GGMLModelDescNodeExtended *ext = (GGMLModelDescNodeExtended *) node;
 
-  if (node->children != NULL)
+  if (--ext->ref_count == 0)
     {
-      g_hash_table_destroy (node->children);
-      node->children = NULL;
+      g_clear_pointer (&node->leaf, ggml_model_desc_leaf_unref);
+      g_clear_pointer (&node->children, g_hash_table_destroy);
+      g_clear_pointer (&node, g_free);
     }
 }
 
 G_DEFINE_BOXED_TYPE (GGMLModelDescNode,
                      ggml_model_desc_node,
-                     ggml_model_desc_node_copy,
-                     ggml_model_desc_node_free)
+                     ggml_model_desc_node_ref,
+                     ggml_model_desc_node_unref)
 
 struct _GGMLContext {
   struct ggml_context *ctx;

@@ -62,10 +62,10 @@ GType ggml_model_desc_leaf_get_type (void);
 
 GGMLModelDescLeaf *ggml_model_desc_leaf_new (int64_t *dimensions, size_t n_dim,
                                              GGMLDataType type);
-GGMLModelDescLeaf *ggml_model_desc_leaf_copy (GGMLModelDescLeaf *leaf);
-void ggml_model_desc_leaf_free (GGMLModelDescLeaf *leaf);
+GGMLModelDescLeaf *ggml_model_desc_leaf_ref (GGMLModelDescLeaf *leaf);
+void ggml_model_desc_leaf_unref (GGMLModelDescLeaf *leaf);
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModelDescLeaf, ggml_model_desc_leaf_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModelDescLeaf, ggml_model_desc_leaf_unref)
 
 /**
  * GGMLModelDescNode:
@@ -89,11 +89,11 @@ GGMLModelDescNode *ggml_model_desc_node_new (GGMLModelDescLeaf *leaf,
 GGMLModelDescNode *ggml_model_desc_node_new_leaf (int64_t *dimensions,
                                                   size_t n_dim,
                                                   GGMLDataType type);
-GGMLModelDescNode *ggml_model_desc_node_copy (GGMLModelDescNode *node);
+GGMLModelDescNode *ggml_model_desc_node_ref (GGMLModelDescNode *node);
 GHashTable *ggml_model_desc_node_flatten (GGMLModelDescNode *node);
-void ggml_model_desc_node_free (GGMLModelDescNode *node);
+void ggml_model_desc_node_unref (GGMLModelDescNode *node);
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModelDescNode, ggml_model_desc_node_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModelDescNode, ggml_model_desc_node_unref)
 
 typedef struct _GGMLTensor GGMLTensor;
 
