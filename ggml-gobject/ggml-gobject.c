@@ -343,6 +343,8 @@ ggml_tensor_unref (GGMLTensor *tensor)
       /* Tensor is part of the owning context's memory pool, so its
        * memory gets freed when the context goes away */
       tensor->tensor = NULL;
+
+      g_clear_pointer (&tensor, g_free);
     }
 }
 
