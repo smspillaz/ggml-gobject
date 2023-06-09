@@ -161,6 +161,9 @@ GGMLTokenDictionary *ggml_token_dictionary_new (const char **tokens);
 GGMLTokenDictionary *
 ggml_token_dictionary_ref (GGMLTokenDictionary *dictionary);
 void ggml_token_dictionary_unref (GGMLTokenDictionary *dictionary);
+gboolean ggml_token_dictionary_lookup_extended (GGMLTokenDictionary *token_dictionary,
+                                                const char *key,
+                                                int32_t *out_token);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLTokenDictionary,
                                ggml_token_dictionary_unref)
