@@ -69,14 +69,12 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModelDescLeaf, ggml_model_desc_leaf_unref)
 
 /**
  * GGMLModelDescNode:
- * @name: The name of the node
  * @children: (element-type utf8 GGMLModelDescNode): A #GHashTable with this
  * node's children
  * @leaf: A #GGMLModelDescLeaf
  */
 typedef struct
 {
-  gchar *name;
   GHashTable *children;
   GGMLModelDescLeaf *leaf;
 } GGMLModelDescNode;
