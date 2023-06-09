@@ -1026,9 +1026,9 @@ ggml_language_model_load_from_istream (GInputStream *istream, GGMLModelDescFromH
       return NULL;
     }
 
-  return ggml_language_model_new (g_steal_pointer (&hyperparameters),
-                                  g_steal_pointer (&token_dictionary),
-                                  g_steal_pointer (&model));
+  return ggml_language_model_new (hyperparameters,
+                                  token_dictionary,
+                                  model);
 }
 
 /**
