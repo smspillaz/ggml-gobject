@@ -648,7 +648,7 @@ ggml_token_dictionary_new (const char **tokens)
   dictionary->ref_count = 1;
 
   int i = 0;
-  const char **tokens_iterator = tokens;
+  const char **tokens_iterator = (const char **) dictionary->idx_to_word;
 
   while (*tokens_iterator != NULL)
     {
