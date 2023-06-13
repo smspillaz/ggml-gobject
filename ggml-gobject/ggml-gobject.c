@@ -253,6 +253,9 @@ struct _GGMLTensor {
 struct _GGMLModel {
   GGMLContext *owning_context;
   GHashTable *weights;
+  GGMLModelForwardFunc forward_func;
+  gpointer forward_func_user_data;
+  GDestroyNotify forward_func_user_data_destroy;
   size_t ref_count;
 };
 
@@ -628,11 +631,17 @@ G_DEFINE_BOXED_TYPE (GGMLTensor, ggml_tensor, ggml_tensor_ref, ggml_tensor_unref
 
 static GGMLModel *
 ggml_model_new_from_flattened_desc (GGMLContext *context,
-                                    GHashTable  *flattened_desc)
+                                    GHashTable  *flattened_desc,
+                                    GGMLModelForwardFunc forward_func,
+                                    gpointer forward_func_user_data,
+                                    GDestroyNotify forward_func_user_data_destroy)
 {
   GGMLModel *model = g_new0 (GGMLModel, 1);
   model->owning_context = ggml_context_ref (context);
   model->weights = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_tensor_unref);
+  model->forward_func = forward_func;
+  model->forward_func_user_data = forward_func_user_data;
+  model->forward_func_user_data_destroy = forward_func_user_data_destroy;
   model->ref_count = 1;
 
   GHashTableIter iter;
@@ -711,6 +720,12 @@ ggml_model_unref (GGMLModel *model)
     {
       g_clear_pointer (&model->owning_context, ggml_context_unref);
       g_clear_pointer (&model->weights, g_hash_table_destroy);
+
+      if (model->forward_func_user_data_destroy)
+        {
+          g_clear_pointer (&model->forward_func_user_data, model->forward_func_user_data_destroy);
+        }
+
       g_clear_pointer (&model, g_free);
     }
 }
@@ -1303,6 +1318,9 @@ ggml_load_model_from_istream (GInputStream                           *istream,
                               GGMLModelDescFromHyperparametersFunc    create_model_desc,
                               gpointer                                create_model_desc_user_data,
                               GGMLHyperparameters                    *hyperparameters,
+                              GGMLModelForwardFunc                    forward_func,
+                              gpointer                                forward_func_user_data,
+                              GDestroyNotify                          forward_func_user_data_destroy,
                               char                                 ***out_loaded_keys,
                               GCancellable                           *cancellable,
                               GError                                **error)
@@ -1318,7 +1336,11 @@ ggml_load_model_from_istream (GInputStream                           *istream,
   g_autoptr (GGMLContext) context = ggml_context_new (memory_size);
   g_autoptr (GGMLModelDescNode) model_desc_node = (*create_model_desc) (hyperparameters, create_model_desc_user_data);
   g_autoptr (GHashTable) flattened_desc = ggml_model_desc_node_flatten (model_desc_node);
-  g_autoptr (GGMLModel) model = ggml_context_new_model_from_flattened_desc (context, flattened_desc);
+  g_autoptr (GGMLModel) model = ggml_context_new_model_from_flattened_desc (context,
+                                                                            flattened_desc,
+                                                                            forward_func,
+                                                                            forward_func_user_data,
+                                                                            forward_func_user_data_destroy);
 
   /* Now that we have the model, we can start loading in the weights */
   if (!ggml_model_load_weights_from_istream (istream, model, out_loaded_keys, cancellable, error))
@@ -1360,6 +1382,9 @@ ggml_model_set_possible_tied_weights (GGMLModel *model,
  * @istream: (transfer none): A #GInputStream
  * @create_model_desc: (transfer none) (scope call): A #GGMLModelDescFromHyperparametersFunc to specify the model structure and weights
  * @create_model_desc_user_data: (closure create_model_desc): A closure for @create_model_desc
+ * @forward_func: (scope notified) (nullable): A #GGMLModelFowardFunc
+ * @forward_func_user_data: (closure forward_func) (transfer full): The user data for @forward_func
+ * @forward_func_user_data_destroy: (destroy forward_func): A #GDestroyNotify for forward_func
  * @cancellable: (transfer none) (nullable): A #GCancellable
  * @error: (nullable): A #GError
  *
@@ -1372,6 +1397,9 @@ GGMLLanguageModel *
 ggml_language_model_load_from_istream (GInputStream *istream,
                                        GGMLModelDescFromHyperparametersFunc create_model_desc,
                                        gpointer create_model_desc_user_data,
+                                       GGMLModelForwardFunc forward_func,
+                                       gpointer forward_func_user_data,
+                                       GDestroyNotify forward_func_user_data_destroy,
                                        GCancellable *cancellable,
                                        GError **error)
 {
@@ -1399,6 +1427,9 @@ ggml_language_model_load_from_istream (GInputStream *istream,
                                                              create_model_desc,
                                                              create_model_desc_user_data,
                                                              hyperparameters,
+                                                             forward_func,
+                                                             forward_func_user_data,
+                                                             forward_func_user_data_destroy,
                                                              &loaded_keys,
                                                              cancellable,
                                                              error);
@@ -1577,13 +1608,24 @@ ggml_context_new_tensor_3d (GGMLContext *context, GGMLDataType data_type, size_t
  * @context: A #GGMLContext
  * @flattened_desc: (element-type utf8 GGMLModelDescLeaf): A #GHashTable containing
  *                  key-value pairs of weight names and their descriptions.
+ * @forward_func: (scope notified) (nullable): A #GGMLModelFowardFunc
+ * @forward_func_user_data: (closure forward_func) (transfer full): The user data for @forward_func
+ * @forward_func_user_data_destroy: (destroy forward_func): A #GDestroyNotify for forward_func
  *
  * Returns: (transfer full): A new #GGMLModel
  */
 GGMLModel *
-ggml_context_new_model_from_flattened_desc (GGMLContext *context, GHashTable *flattened_desc)
+ggml_context_new_model_from_flattened_desc (GGMLContext *context,
+                                            GHashTable *flattened_desc,
+                                            GGMLModelForwardFunc forward_func,
+                                            gpointer forward_func_user_data,
+                                            GDestroyNotify forward_func_user_data_destroy)
 {
-  return ggml_model_new_from_flattened_desc (context, flattened_desc);
+  return ggml_model_new_from_flattened_desc (context,
+                                             flattened_desc,
+                                             forward_func,
+                                             forward_func_user_data,
+                                             forward_func_user_data_destroy);
 }
 
 G_DEFINE_BOXED_TYPE (GGMLContext, ggml_context, ggml_context_ref, ggml_context_unref);

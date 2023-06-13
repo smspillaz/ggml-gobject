@@ -178,6 +178,28 @@ typedef struct _GGMLModel GGMLModel;
 #define GGML_TYPE_MODEL (ggml_model_get_type ());
 GType ggml_model_get_type (void);
 
+/**
+ * GGMLModelForwardFunc:
+ * @model: (transfer none): A #GGMLModel
+ * @hyperparameters: (transfer none): A #GGMLHyperparameters
+ * @inputs: (transfer none): A #GVariant with inputs used for the forward computation
+ * @input_parameters: (nullable) (element-type utf8 int): A #GHashTable with some parameters for the input
+ * @compute_graph: (transfer none): A #GGMLComputeGraph which can be added to.
+ * @user_data: (closure): A closure with user data to evaluate the function
+ * @error: A #GError out-variable
+ *
+ * Returns: (transfer full): A new #GGMLTensor output node, used to define a computation graph for a forward pass,
+ *          or %NULL with @error set on failure. Note that this callback doesn't actually compute the end result,
+ *          merely just defines the compute graph.
+ */
+typedef GGMLTensor * (*GGMLModelForwardFunc) (GGMLModel   *model,
+                                              GGMLHyperparameters *hyperparameters,
+                                              GVariant    *inputs,
+                                              GHashTable  *input_parameters,
+                                              GGMLComputeGraph *compute_graph,
+                                              gpointer     user_data,
+                                              GError     **error);
+
 GGMLModel *ggml_model_ref (GGMLModel *model);
 void ggml_model_unref (GGMLModel *model);
 GGMLTensor *ggml_model_get (GGMLModel *model, const char *key);
@@ -210,10 +232,14 @@ ggml_language_model_new (GGMLHyperparameters *hyperparameters,
                          GGMLTokenDictionary *dictionary, GGMLModel *model);
 GGMLLanguageModel *ggml_language_model_ref (GGMLLanguageModel *language_model);
 void ggml_language_model_unref (GGMLLanguageModel *language_model);
-GGMLLanguageModel *ggml_language_model_load_from_istream (
-    GInputStream *istream,
-    GGMLModelDescFromHyperparametersFunc create_model_desc,
-    GCancellable *cancellable, GError **error);
+GGMLLanguageModel *ggml_language_model_load_from_istream (GInputStream *istream,
+                                                          GGMLModelDescFromHyperparametersFunc create_model_desc,
+                                                          gpointer create_model_desc_user_data,
+                                                          GGMLModelForwardFunc forward_func,
+                                                          gpointer forward_func_user_data,
+                                                          GDestroyNotify forward_func_user_data_destroy,
+                                                          GCancellable *cancellable,
+                                                          GError **error);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModel, ggml_language_model_unref)
 
@@ -233,12 +259,14 @@ GGMLTensor *ggml_context_new_tensor_2d (GGMLContext *context,
 GGMLTensor *ggml_context_new_tensor_3d (GGMLContext *context,
                                         GGMLDataType data_type, size_t width,
                                         size_t height, size_t depth);
-GGMLModel *
-ggml_context_new_model_from_flattened_desc (GGMLContext *context,
-                                            GHashTable *flattened_desc);
+
+GGMLModel * ggml_context_new_model_from_flattened_desc (GGMLContext *context,
+                                                        GHashTable *flattened_desc,
+                                                        GGMLModelForwardFunc forward_func,
+                                                        gpointer forward_func_user_data,
+                                                        GDestroyNotify forward_func_user_data_destroy);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLContext, ggml_context_unref)
-
 
 gboolean ggml_gpt_tokenize (GGMLTokenDictionary *token_dictionary,
                             const char *string,
