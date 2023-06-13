@@ -245,5 +245,8 @@ gboolean ggml_gpt_tokenize (GGMLTokenDictionary *token_dictionary,
                             int32_t **out_tokens,
                             size_t  *out_size,
                             GError **error);
+char * ggml_token_dictionary_decode (GGMLTokenDictionary *token_dictionary,
+                                     int32_t *tokens,
+                                     size_t n_tokens);
 
 G_END_DECLS

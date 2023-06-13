@@ -904,6 +904,36 @@ ggml_iterate_words_in_regex (GRegex *regex, const char *string)
 }
 
 /**
+ * ggml_token_dictionary_decode:
+ * @token_dictionary: (transfer none): A #GGMLTokenDictionary
+ * @tokens: (array length=n_tokens): An array of #int32_t tokens
+ * @n_tokens: Number of tokens in @tokens
+ *
+ * Decode the token array back into a string. It is an error to
+ * pass tokens to this function which are outside the range of tokens
+ * in @token_dictionary.
+ *
+ * Returns: (transfer full) (array zero-terminated=1): A new string with the decoded tokens.
+ */
+char *
+ggml_token_dictionary_decode (GGMLTokenDictionary *token_dictionary,
+                              int32_t             *tokens,
+                              size_t               n_tokens)
+{
+  size_t token_dictionary_size = g_hash_table_size (token_dictionary->word_to_idx);
+  g_autoptr(GPtrArray) decoded_tokens = g_ptr_array_new_null_terminated (n_tokens, NULL, TRUE);
+
+  for (size_t i = 0; i < n_tokens; ++i)
+    {
+      g_assert (tokens[i] < token_dictionary_size);
+
+      g_ptr_array_add (decoded_tokens, token_dictionary->idx_to_word[tokens[i]]);
+    }
+
+  return g_strjoinv ("", (char **) decoded_tokens->pdata);
+}
+
+/**
  * ggml_gpt_tokenize:
  * @token_dictionary: A #GGMLTokenDictionary of tokens
  * @string: A string to tokenize
