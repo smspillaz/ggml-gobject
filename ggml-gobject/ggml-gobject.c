@@ -597,6 +597,7 @@ ggml_model_new_from_flattened_desc (GGMLContext *context,
         }
 
       g_assert (tensor != NULL);
+      ggml_tensor_set_name (tensor, key);
       g_hash_table_insert (model->weights, g_strdup (key), tensor);
     }
 
