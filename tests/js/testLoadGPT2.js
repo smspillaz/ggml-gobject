@@ -67,6 +67,260 @@ function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
   );
 }
 
+const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph) => {
+  const [n_vocab, n_embd, n_ff, n_layer, n_ctx, nhead, ftype] = [
+    hyperparameters.get_int32('n_vocab'),
+    hyperparameters.get_int32('n_embd'),
+    hyperparameters.get_int32('n_embd') * 4,
+    hyperparameters.get_int32('n_layer'),
+    hyperparameters.get_int32('n_ctx'),
+    hyperparameters.get_int32('n_head'),
+    hyperparameters.get_int32('ftype')
+  ];
+  const n_past = eval_parameters.n_past;
+  const memory_k = model.get("memory/k");
+  const memory_v = model.get("memory/v");
+
+  /* We assume that this is enough memory for the context */
+  const input_ids = inputs.deep_unpack();
+  const n_tokens = input_ids.length;
+  const context = GGML.Context.new(256 * 1024 * 1024 + Math.ceil(2048000 * n_tokens * 1.10 * 2));
+  const embedding_indices = context.new_tensor_1d(GGML.DataType.I32, n_tokens);
+  embedding_indices.set_data_from_int32_array(input_ids);
+  const position_indices = context.new_tensor_1d(GGML.DataType.I32, n_tokens);
+  /* Convoluted way of doing arange */
+  position_indices.set_data_from_int32_array([...Array(n_tokens)].map((_, i) => i + n_past));
+
+  const initial_input_vectors = GGML.op_add(
+    context,
+    GGML.op_get_rows(context, model.get("model/wte"), embedding_indices),
+    GGML.op_get_rows(context, model.get("model/wpe"), position_indices)
+  );
+
+  /* Compute all the layers */
+  let cur = initial_input_vectors;
+  let residual = initial_input_vectors;
+
+  for (let i = 0; i < n_layer; i++) {
+    /* input layer-norm */
+    cur = GGML.op_norm(context, cur);
+    cur = GGML.op_add(
+      context,
+      GGML.op_mul(
+        context,
+        GGML.op_repeat(context, model.get(`model/h${i}/ln_1/g`), cur),
+        cur
+      ),
+      GGML.op_repeat(context, model.get(`model/h${i}/ln_1/b`), cur)
+    );
+
+    /* multi-head self-attention. */
+    cur = GGML.op_mul_mat(context, model.get(`model/h${i}/attn/c_attn/w`), cur);
+    cur = GGML.op_add(context,
+                      GGML.op_repeat(context, model.get(`model/h${i}/attn/c_attn/b`), cur),
+                      cur);
+
+    /* chop into query, key and value heads */
+    const Qcur = GGML.op_view_2d(context, cur, n_embd, n_tokens, 0 * n_embd);
+    const Kcur = GGML.op_view_2d(context, cur, n_embd, n_tokens, 1 * n_embd);
+    const Vcur = GGML.op_view_2d(context, cur, n_embd, n_tokens, 2 * n_embd);
+
+    /* store into the memory tensor
+     *
+     * This is an optimization - basically we store the current computed keys and
+     * values into a leaf-node memory and fetch from it on later iterations. This
+     * means that we don't have to re-compute all the keys and values for every token
+     * on each iteration, only the keys and values for the most recent token
+     */
+    const k = GGML.op_view_1d(context, memory_k, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
+    const v = GGML.op_view_1d(context, memory_v, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
+
+    cgraph.build_forward_expand(GGML.op_cpy(context, Kcur, k));
+    cgraph.build_forward_expand(GGML.op_cpy(context, Vcur, v));
+
+    const Q = GGML.op_permute(
+      context,
+      GGML.op_cpy(
+        context,
+        Qcur,
+        context.new_tensor_3d(GGML.DataType.F32, n_embd / nhead, nhead, n_tokens)
+      ),
+      0, 2, 1, 3
+    );
+
+    const K = GGML.op_permute(
+      context,
+      GGML.op_reshape_3d(
+        context,
+        /*GGML.op_cpy(
+          context,
+          Kcur,
+          context.new_tensor_3d(GGML.DataType.F32, n_embd / nhead, nhead, n_tokens)
+        ),*/
+        GGML.op_view_1d(
+          context,
+          memory_k,
+          (n_past + n_tokens) * n_embd,
+          i * n_ctx * n_embd
+        ),
+        n_embd / nhead,
+        nhead,
+        n_tokens + n_past
+      ),
+      0, 2, 1, 3
+    );
+
+    const KQ = GGML.op_mul_mat(context, K, Q);
+    const KQ_scaled = GGML.op_scale_inplace(context, KQ, context.new_scalar_f32(1.0 / Math.sqrt(n_embd / nhead)));
+    const KQ_masked = GGML.op_diag_mask_inf_inplace(context, KQ_scaled, n_past);
+    const KQ_soft_max = GGML.op_soft_max_inplace(context, KQ_masked);
+    const V_trans = GGML.op_cpy(
+      context,
+      GGML.op_permute(
+        context,
+        GGML.op_reshape_3d(
+          context,
+          /*GGML.op_cpy(
+            context,
+            Kcur,
+            context.new_tensor_3d(GGML.DataType.F32, n_embd / nhead, nhead, n_tokens)
+          ),*/
+          GGML.op_view_1d(
+            context,
+            memory_v,
+            (n_past + n_tokens) * n_embd,
+            i * n_ctx * n_embd
+          ),
+          n_embd / nhead,
+          nhead,
+          n_tokens + n_past
+        ),
+        1, 2, 0, 3
+      ),
+      context.new_tensor_3d(GGML.DataType.F32, n_tokens + n_past, n_embd / nhead, nhead)
+    );
+
+    const KQV = GGML.op_mul_mat(context, V_trans, KQ_soft_max);
+    const KQV_merged = GGML.op_permute(context, KQV, 0, 2, 1, 3);
+
+    cur = GGML.op_cpy(
+      context,
+      KQV_merged,
+      context.new_tensor_2d(GGML.DataType.F32, n_embd, n_tokens)
+    );
+
+    /* projection */
+    cur = GGML.op_mul_mat(
+      context,
+      model.get(`model/h${i}/attn/c_proj/w`),
+      cur
+    );
+
+    cur = GGML.op_add(
+      context,
+      GGML.op_repeat(
+        context,
+        model.get(`model/h${i}/attn/c_proj/b`),
+        cur
+      ),
+      cur
+    );
+
+    /* Add residual after projection */
+    cur = GGML.op_add(context, cur, residual);
+
+    const residualFF = cur;
+
+    /* feedforward */
+
+    /* feedforward norm */
+    cur = GGML.op_norm(context, cur);
+    cur = GGML.op_add(
+      context,
+      GGML.op_mul(
+        context,
+        GGML.op_repeat(
+          context,
+          model.get(`model/h${i}/ln_2/g`),
+          cur
+        ),
+        cur
+      ),
+      GGML.op_repeat(context, model.get(`model/h${i}/ln_2/b`), cur)
+    );
+
+    /* feedforward fc */
+    cur = GGML.op_mul_mat(
+      context,
+      model.get(`model/h${i}/mlp/c_fc/w`),
+      cur
+    );
+    cur = GGML.op_add(
+      context,
+      GGML.op_repeat(
+        context,
+        model.get(`model/h${i}/mlp/c_fc/b`),
+        cur
+      ),
+      cur
+    )
+    cur = GGML.op_gelu(context, cur);
+
+    cur = GGML.op_mul_mat(
+      context,
+      model.get(`model/h${i}/mlp/c_proj/w`),
+      cur
+    );
+    cur = GGML.op_add(
+      context,
+      GGML.op_repeat(
+        context,
+        model.get(`model/h${i}/mlp/c_proj/b`),
+        cur
+      ),
+      cur
+    );
+
+    /* residual connection */
+    cur = GGML.op_add(
+      context,
+      cur,
+      residualFF
+    );
+
+    residual = cur;
+  }
+
+  /* Now we got to the end. Lets do the final norm and
+    * project the outputs into logits-space */
+  cur = GGML.op_norm(context, cur);
+  cur = GGML.op_add(
+    context,
+    GGML.op_mul(
+      context,
+      GGML.op_repeat(
+        context,
+        model.get(`model/ln_f/g`),
+        cur
+      ),
+      cur
+    ),
+    GGML.op_repeat(
+      context,
+      model.get(`model/ln_f/b`),
+      cur
+    )
+  );
+
+  cur = GGML.op_mul_mat(
+    context,
+    model.get(`model/lm_head`),
+    cur
+  );
+
+  return cur;
+};
+
 describe('GGML GPT2', function() {
   it('can tokenize a simple string', function() {
     const token_dictionary = GGML.TokenDictionary.new([
