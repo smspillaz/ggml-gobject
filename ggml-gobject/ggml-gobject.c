@@ -531,6 +531,26 @@ ggml_tensor_get_name (GGMLTensor *tensor)
 }
 
 /**
+ * ggml_tensor_get_shape:
+ * @tensor: A #GGMLTensor
+ * @out_n_dims: (out): Number of dimensions
+ *
+ * Returns: (transfer none): An #int64_t array with the shape of the tensor. Note that in
+ *          GGML, shapes go front-to-back, so the first element is typically the vector dimension,
+ *          then the number of sequence items, then the batch size, etc.
+ */
+int64_t *
+ggml_tensor_get_shape (GGMLTensor *tensor, size_t *out_n_dims)
+{
+  if (out_n_dims != NULL)
+    {
+      *out_n_dims = tensor->tensor->n_dims;
+    }
+
+  return tensor->tensor->ne;
+}
+
+/**
  * ggml_data_type_size: 
  * @data_type: A #GGMLDataType
  *
