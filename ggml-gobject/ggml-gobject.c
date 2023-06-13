@@ -1390,6 +1390,171 @@ ggml_load_model_from_istream (GInputStream                           *istream,
   return g_steal_pointer (&model);
 }
 
+static size_t
+argmax_f (float *elements, size_t num_elements)
+{
+  size_t max_idx = 0;
+  float max_val = -G_MAXFLOAT;
+
+  for (size_t i = 0; i < num_elements; ++i)
+    {
+      if (elements[i] > max_val)
+        {
+          max_idx = i;
+          max_val = elements[i];
+        }
+    }
+
+  return max_idx;
+}
+
+static gboolean
+ggml_language_model_forward_single_iteration (GGMLModel            *model,
+                                              GGMLHyperparameters  *hyperparameters,
+                                              GHashTable           *inference_parameters,
+                                              int32_t              *input_tokens,
+                                              size_t                n_input_tokens,
+                                              int32_t              *out_token,
+                                              GError              **error)
+{
+  int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
+  g_autoptr(GVariant) variant = g_variant_ref_sink(g_variant_new_fixed_array (G_VARIANT_TYPE_INT32,
+                                                                              input_tokens,
+                                                                              n_input_tokens,
+                                                                              sizeof (int32_t)));
+  g_autoptr(GGMLTensor) logits_tensor = ggml_model_forward (model,
+                                                            hyperparameters,
+                                                            variant,
+                                                            inference_parameters,
+                                                            error);
+
+  if (logits_tensor == NULL)
+    {
+      *out_token = -1;
+      return FALSE;
+    }
+
+  size_t logits_tensor_n_bytes;
+  float *logits_tensor_data = (float *) ggml_tensor_get_data (logits_tensor, &logits_tensor_n_bytes);
+  float *end_logit_data = logits_tensor_data + (((int32_t) (n_input_tokens - 1)) * n_vocab);
+  *out_token = argmax_f (end_logit_data, n_vocab);
+
+  return TRUE;
+}
+
+static const char n_past_key[] = "n_past";
+
+static int32_t *
+ggml_language_model_forward_loop (GGMLModel           *model,
+                                  GGMLHyperparameters *hyperparameters,
+                                  int32_t             *initial_prompt_tokens,
+                                  size_t               n_initial_prompt_tokens,
+                                  int32_t              num_iterations,
+                                  size_t              *out_num_tokens,
+                                  GError             **error)
+{
+  /* Assming for now that num_iterations is positive */
+  g_autoptr(GArray) prompt_tokens = g_array_sized_new (FALSE, TRUE, sizeof (int32_t), n_initial_prompt_tokens + num_iterations);
+  g_autoptr(GHashTable) inference_parameters = g_hash_table_new_full (g_str_hash, g_str_equal, NULL , NULL);
+
+  g_hash_table_insert (inference_parameters, n_past_key, GINT_TO_POINTER (0));
+
+  memcpy (prompt_tokens->data, initial_prompt_tokens, sizeof (int32_t) * n_initial_prompt_tokens);
+  prompt_tokens->len = n_initial_prompt_tokens;
+
+  /* Edge case */
+  if (num_iterations == 0)
+    {
+      return g_array_steal (prompt_tokens, out_num_tokens);
+    }
+
+  /* We first do a single iteration to populate the key/value memories */
+  int32_t argmax;
+  if (!ggml_language_model_forward_single_iteration (model,
+                                                     hyperparameters,
+                                                     inference_parameters,
+                                                     (int32_t *) prompt_tokens->data,
+                                                     prompt_tokens->len,
+                                                     &argmax,
+                                                     error))
+    {
+      return NULL;
+    }
+
+  g_array_append_vals (prompt_tokens, &argmax, 1);
+
+  /* Now we have the key/value memories and we can do the inference as usual.
+   *
+   * Here we pass in one token at a time, eg, the length of the input is always 1
+   * and we are using the most recent token. The keys/values from previous iterations
+   * are cached. This means that decoding performance can be linear, as opposed
+   * to quadratic. */
+  for (int32_t i = 0; i < num_iterations - 1; ++i)
+    {
+      g_hash_table_insert (inference_parameters, (gpointer) n_past_key, GINT_TO_POINTER (n_initial_prompt_tokens + i));
+
+      if (!ggml_language_model_forward_single_iteration (model,
+                                                         hyperparameters,
+                                                         inference_parameters,
+                                                         ((int32_t *) prompt_tokens->data) + n_initial_prompt_tokens + i,
+                                                         1,
+                                                         &argmax,
+                                                         error))
+        {
+          return NULL;
+        }
+
+      g_array_append_vals (prompt_tokens, &argmax, 1);
+    }
+
+  *out_num_tokens = 0;
+
+  return g_array_steal (prompt_tokens, out_num_tokens);
+}
+
+/**
+ * ggml_language_model_complete:
+ * @language_model: A #GGMLLanguageModel
+ * @prompt: An input prompt
+ * @num_iterations: Number of tokens to generate.
+ * @error: A #GError
+ *
+ * Returns: (transfer full): The completed prompt, after running the autoregressive
+ *          generation procedure for @num_iterations.
+ */
+char *
+ggml_language_model_complete (GGMLLanguageModel  *language_model,
+                              const char         *prompt,
+                              int32_t             num_iterations,
+                              GError            **error)
+{
+  g_autofree int32_t *tokens = NULL;
+  size_t   n_tokens = 0;
+
+  if (!ggml_gpt_tokenize (language_model->token_dictionary, prompt, &tokens, &n_tokens, error))
+    {
+      return NULL;
+    }
+
+  size_t out_num_tokens = 0;
+  g_autofree int32_t *completed_tokens = ggml_language_model_forward_loop (language_model->model,
+                                                                           language_model->hyperparameters,
+                                                                           tokens,
+                                                                           n_tokens,
+                                                                           num_iterations,
+                                                                           &out_num_tokens,
+                                                                           error);
+
+  if (completed_tokens == NULL)
+    {
+      return NULL;
+    }
+
+  return ggml_token_dictionary_decode (language_model->token_dictionary,
+                                       completed_tokens,
+                                       out_num_tokens);
+}
+
 static void
 ggml_model_set_possible_tied_weights (GGMLModel *model,
                                       const char **loaded_keys,

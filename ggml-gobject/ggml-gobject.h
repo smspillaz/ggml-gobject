@@ -246,6 +246,11 @@ GGMLLanguageModel *ggml_language_model_load_from_istream (GInputStream *istream,
                                                           GCancellable *cancellable,
                                                           GError **error);
 
+char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
+                                     const char         *prompt,
+                                     int32_t             num_iterations,
+                                     GError            **error);
+
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModel, ggml_language_model_unref)
 
 typedef struct _GGMLContext GGMLContext;
