@@ -1180,7 +1180,9 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
         }
 
       size_t bytes_per_element = ggml_data_type_size (ttype);
-      size_t allocated_bytes = ggml_tensor_n_bytes (tensor);
+      size_t allocated_bytes = 0;
+      char *tensor_data_ptr = ggml_tensor_get_data (tensor, &allocated_bytes);
+
       size_t expected_bytes = (tensor_definition_n_elements * bytes_per_element / ggml_tensor_block_size (tensor));
       if (expected_bytes != allocated_bytes)
         {
