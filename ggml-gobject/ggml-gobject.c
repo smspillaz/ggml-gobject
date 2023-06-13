@@ -468,6 +468,27 @@ ggml_tensor_set_data_from_bytes (GGMLTensor *tensor, GBytes *bytes)
 }
 
 /**
+ * ggml_tensor_set_data_from_int32_array:
+ * @tensor: A #GGMLTensor
+ * @array: (array length=n_elements): An array of #int32_t elements.
+ * @n_elements: Number of elements in @array
+ *
+ * Set the data of @tensor from the int32 array in @array.
+ *
+ * It is an error to call this function on a tensor that is not
+ * of type %GGML_DATA_TYPE_I32.
+ */
+void
+ggml_tensor_set_data_from_int32_array (GGMLTensor *tensor,
+                                       int32_t    *array,
+                                       size_t      n_elements)
+{
+  g_assert (tensor->tensor->type == (enum ggml_type) GGML_DATA_TYPE_I32);
+
+  ggml_tensor_set_data (tensor, (char *) array, n_elements * sizeof (int32_t));
+}
+
+/**
  * ggml_data_type_size: 
  * @data_type: A #GGMLDataType
  *

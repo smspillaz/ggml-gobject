@@ -106,6 +106,9 @@ size_t ggml_tensor_block_size (GGMLTensor *tensor);
 size_t ggml_tensor_n_bytes (GGMLTensor *tensor);
 void ggml_tensor_set_data (GGMLTensor *tensor, char *data, size_t size);
 void ggml_tensor_set_data_from_bytes (GGMLTensor *tensor, GBytes *bytes);
+void ggml_tensor_set_data_from_int32_array (GGMLTensor *tensor,
+                                            int32_t    *array,
+                                            size_t      n_elements);
 char * ggml_tensor_get_data (GGMLTensor *tensor, size_t *out_n_bytes);
 GBytes * ggml_tensor_get_bytes (GGMLTensor *tensor);
 
