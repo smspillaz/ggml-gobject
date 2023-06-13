@@ -1104,8 +1104,14 @@ static inline int32_t product_i32 (int32_t *array, size_t n)
 }
 
 static gboolean
-ggml_model_load_weights_from_istream (GInputStream *istream, GGMLModel *model, GCancellable *cancellable, GError **error)
+ggml_model_load_weights_from_istream (GInputStream *istream,
+                                      GGMLModel *model,
+                                      char ***out_loaded_keys,
+                                      GCancellable *cancellable,
+                                      GError **error)
 {
+  g_autoptr(GPtrArray) loaded_keys = g_ptr_array_new_null_terminated (0, g_free, TRUE);
+
   while (TRUE)
     {
       size_t bytes_read = 0;
@@ -1124,7 +1130,7 @@ ggml_model_load_weights_from_istream (GInputStream *istream, GGMLModel *model, G
        * and break out of this loop */
       if (bytes_read == 0)
         {
-          return TRUE;
+          break;
         }
 
       if (!input_stream_read_exactly (istream, (char *) &name_length, sizeof (int32_t) * 1, cancellable, error))
@@ -1203,6 +1209,7 @@ ggml_load_model_from_istream (GInputStream                           *istream,
                               GGMLModelDescFromHyperparametersFunc    create_model_desc,
                               gpointer                                create_model_desc_user_data,
                               GGMLHyperparameters                    *hyperparameters,
+                              char                                 ***out_loaded_keys,
                               GCancellable                           *cancellable,
                               GError                                **error)
 {
@@ -1220,7 +1227,7 @@ ggml_load_model_from_istream (GInputStream                           *istream,
   g_autoptr (GGMLModel) model = ggml_context_new_model_from_flattened_desc (context, flattened_desc);
 
   /* Now that we have the model, we can start loading in the weights */
-  if (!ggml_model_load_weights_from_istream (istream, model, cancellable, error))
+  if (!ggml_model_load_weights_from_istream (istream, model, out_loaded_keys, cancellable, error))
     {
       return FALSE;
     }
@@ -1267,10 +1274,12 @@ ggml_language_model_load_from_istream (GInputStream *istream,
       return NULL;
     }
 
+  g_autofree char **loaded_keys = NULL;
   g_autoptr(GGMLModel) model = ggml_load_model_from_istream (istream,
                                                              create_model_desc,
                                                              create_model_desc_user_data,
                                                              hyperparameters,
+                                                             &loaded_keys,
                                                              cancellable,
                                                              error);
 
