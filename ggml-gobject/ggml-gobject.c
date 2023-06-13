@@ -432,6 +432,25 @@ ggml_tensor_get_data (GGMLTensor *tensor,
 }
 
 /**
+ * ggml_tensor_get_bytes:
+ * @tensor: A #GGMLTensor
+ *
+ * Makes a copy of the tensor data and returns it as a #GBytes
+ * which may be more suitable for bindings (but is quite inefficient
+ * unless you wanted to copy the data).
+ *
+ * Returns: (transfer full): A #GBytes containing the tensor data
+ */
+GBytes *
+ggml_tensor_get_bytes (GGMLTensor *tensor)
+{
+  size_t n_bytes = 0;
+  const char *data = ggml_tensor_get_data (tensor, &n_bytes);
+
+  return g_bytes_new (data, n_bytes);
+}
+
+/**
  * ggml_tensor_set_data_from_bytes:
  * @tensor: A #GGMLTensor
  * @bytes: (transfer none): A #GBytes with some data

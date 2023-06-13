@@ -107,6 +107,7 @@ size_t ggml_tensor_n_bytes (GGMLTensor *tensor);
 void ggml_tensor_set_data (GGMLTensor *tensor, char *data, size_t size);
 void ggml_tensor_set_data_from_bytes (GGMLTensor *tensor, GBytes *bytes);
 char * ggml_tensor_get_data (GGMLTensor *tensor, size_t *out_n_bytes);
+GBytes * ggml_tensor_get_bytes (GGMLTensor *tensor);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLTensor, ggml_tensor_unref)
 
