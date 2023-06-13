@@ -31,8 +31,8 @@ function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
         {
           "ln_f/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
           "ln_f/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-          "wte": GGML.ModelDescNode.new_leaf([n_vocab, d_model], GGML.DataType.F16),
-          "wpe": GGML.ModelDescNode.new_leaf([n_ctx, d_model], GGML.DataType.F32),
+          "wte": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
+          "wpe": GGML.ModelDescNode.new_leaf([d_model, n_ctx], GGML.DataType.F32),
           "lm_head": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
           ...Object.fromEntries(
             [...Array(n_layers).keys()].map(
