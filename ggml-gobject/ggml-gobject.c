@@ -1808,6 +1808,23 @@ ggml_context_new_tensor_3d (GGMLContext *context, GGMLDataType data_type, size_t
 }
 
 /**
+ * ggml_context_new_scalar_f32:
+ * @context: A #GGMLContext
+ * @value: A #float with the value
+ *
+ * Creates a new #GGMLTensor of shape 1 with the scalar value given
+ * in @value
+ *
+ * Returns: (transfer full): A new #GGMLTensor
+ */
+GGMLTensor *
+ggml_context_new_scalar_f32 (GGMLContext *context,
+                             float value)
+{
+  return ggml_tensor_new_scalar_f32 (context, value);
+}
+
+/**
  * ggml_context_new_model_from_flattened_desc:
  * @context: A #GGMLContext
  * @flattened_desc: (element-type utf8 GGMLModelDescLeaf): A #GHashTable containing

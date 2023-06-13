@@ -270,6 +270,9 @@ GGMLTensor *ggml_context_new_tensor_3d (GGMLContext *context,
                                         GGMLDataType data_type, size_t width,
                                         size_t height, size_t depth);
 
+GGMLTensor *ggml_context_new_scalar_f32 (GGMLContext *context,
+                                         float value);
+
 GGMLModel * ggml_context_new_model_from_flattened_desc (GGMLContext *context,
                                                         GHashTable *flattened_desc,
                                                         GGMLModelForwardFunc forward_func,
