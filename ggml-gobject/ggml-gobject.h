@@ -203,6 +203,11 @@ typedef GGMLTensor * (*GGMLModelForwardFunc) (GGMLModel   *model,
 GGMLModel *ggml_model_ref (GGMLModel *model);
 void ggml_model_unref (GGMLModel *model);
 GGMLTensor *ggml_model_get (GGMLModel *model, const char *key);
+GGMLTensor *ggml_model_forward (GGMLModel *model,
+                                GGMLHyperparameters *hyperparameters,
+                                GVariant *inputs,
+                                GHashTable *forward_parameters,
+                                GError **error);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModel, ggml_model_unref)
 

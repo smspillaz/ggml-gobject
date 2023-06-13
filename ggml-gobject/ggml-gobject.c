@@ -730,6 +730,45 @@ ggml_model_unref (GGMLModel *model)
     }
 }
 
+/**
+ * ggml_model_forward:
+ * @model: (transfer none): A #GGMLModel
+ * @hyperparameters: (transfer none) (nullable): A #GGMLHyperparameters for the model
+ * @inputs: (transfer none): An #GVariant with some inputs
+ * @forward_parameters: (element-type utf8 int) (transfer none) (nullable): A #GHashTable with evaluation-specific parameters
+ * @error: A #GError out-parameter
+ *
+ * Does a forward pass on the model to define the compute graph, then runs the computation.
+ *
+ * Returns: (transfer full): A #GGMLTensor that can be used to create a #GGMLComputeGraph.
+*/
+GGMLTensor *
+ggml_model_forward (GGMLModel *model,
+                    GGMLHyperparameters *hyperparameters,
+                    GVariant *inputs,
+                    GHashTable *forward_parameters,
+                    GError **error)
+{
+  g_autoptr(GGMLComputeGraph) compute_graph = ggml_compute_graph_new (2);
+  g_autoptr(GGMLTensor) output = (*model->forward_func) (model,
+                                                         hyperparameters,
+                                                         inputs,
+                                                         forward_parameters,
+                                                         compute_graph,
+                                                         model->forward_func_user_data,
+                                                         error);
+
+  if (output == NULL)
+    {
+      return NULL;
+    }
+
+  ggml_build_forward_expand (&compute_graph->cgraph, output->tensor);
+  ggml_graph_compute (output->owning_context->ctx, &compute_graph->cgraph);
+
+  return g_steal_pointer (&output);
+}
+
 G_DEFINE_BOXED_TYPE (GGMLModel, ggml_model, ggml_model_ref, ggml_model_unref)
 
 /**
