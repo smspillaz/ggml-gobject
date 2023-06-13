@@ -122,17 +122,6 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLTensor, ggml_tensor_unref)
 
 size_t ggml_data_type_size (GGMLDataType data_type);
 
-typedef struct _GGMLModel GGMLModel;
-
-#define GGML_TYPE_MODEL (ggml_model_get_type ());
-GType ggml_model_get_type (void);
-
-GGMLModel *ggml_model_ref (GGMLModel *model);
-void ggml_model_unref (GGMLModel *model);
-GGMLTensor *ggml_model_get (GGMLModel *model, const char *key);
-
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModel, ggml_model_unref)
-
 typedef struct _GGMLHyperparameters GGMLHyperparameters;
 
 #define GGML_TYPE_HYPERPARAMETERS (ggml_hyperparameters_get_type ());
@@ -164,6 +153,17 @@ typedef GGMLModelDescNode *(*GGMLModelDescFromHyperparametersFunc) (
     gpointer user_data);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLHyperparameters, ggml_hyperparameters_unref)
+
+typedef struct _GGMLModel GGMLModel;
+
+#define GGML_TYPE_MODEL (ggml_model_get_type ());
+GType ggml_model_get_type (void);
+
+GGMLModel *ggml_model_ref (GGMLModel *model);
+void ggml_model_unref (GGMLModel *model);
+GGMLTensor *ggml_model_get (GGMLModel *model, const char *key);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModel, ggml_model_unref)
 
 typedef struct _GGMLTokenDictionary GGMLTokenDictionary;
 
