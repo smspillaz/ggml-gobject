@@ -287,4 +287,32 @@ char * ggml_token_dictionary_decode (GGMLTokenDictionary *token_dictionary,
                                      int32_t *tokens,
                                      size_t n_tokens);
 
+/* Some macros here to forward declare bindings. Macros are bad
+ * but these save a lot of work. */
+#define GGML_DECLARE_BINARY_OP_BINDING(opname) GGMLTensor * ggml_op_ ## opname (GGMLContext *context, GGMLTensor * operand1, GGMLTensor * operand2);
+#define GGML_DECLARE_UNARY_OP_BINDING(opname) GGMLTensor * ggml_op_ ## opname (GGMLContext *context, GGMLTensor * operand1);
+
+GGML_DECLARE_BINARY_OP_BINDING (add)
+GGML_DECLARE_BINARY_OP_BINDING (mul)
+GGML_DECLARE_BINARY_OP_BINDING (mul_mat)
+GGML_DECLARE_BINARY_OP_BINDING (cpy)
+GGML_DECLARE_BINARY_OP_BINDING (get_rows)
+GGML_DECLARE_BINARY_OP_BINDING (scale_inplace)
+GGML_DECLARE_BINARY_OP_BINDING (repeat)
+GGML_DECLARE_UNARY_OP_BINDING (soft_max_inplace)
+GGML_DECLARE_UNARY_OP_BINDING (norm)
+GGML_DECLARE_UNARY_OP_BINDING (transpose)
+GGML_DECLARE_UNARY_OP_BINDING (gelu)
+
+/* Some things we have to implement ourselves */
+GGMLTensor * ggml_op_view_1d (GGMLContext *context, GGMLTensor *tensor, int64_t size1, size_t offset);
+GGMLTensor * ggml_op_reshape_1d (GGMLContext *context, GGMLTensor *tensor, int64_t size1);
+GGMLTensor * ggml_op_view_2d (GGMLContext *context, GGMLTensor *tensor, int64_t size1, int64_t size2, size_t offset);
+GGMLTensor * ggml_op_reshape_2d (GGMLContext *context, GGMLTensor *tensor, int64_t size1, int64_t size2);
+GGMLTensor * ggml_op_reshape_3d (GGMLContext *context, GGMLTensor *tensor, int64_t size1, int64_t size2, int64_t size3);
+GGMLTensor * ggml_op_permute (GGMLContext *context, GGMLTensor *tensor, int ax1, int ax2, int ax3, int ax4);
+
+GGMLTensor * ggml_op_diag_mask_inf_inplace (GGMLContext *context, GGMLTensor *tensor, int n_past);
+GGMLTensor * ggml_op_diag_mask_zero_inplace (GGMLContext *context, GGMLTensor *tensor, int n_past);
+
 G_END_DECLS
