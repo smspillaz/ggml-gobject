@@ -315,6 +315,13 @@ ggml_tensor_new_3d (GGMLContext *context, GGMLDataType data_type, size_t width, 
                                                       depth));
 }
 
+static GGMLTensor *
+ggml_tensor_new_scalar_f32 (GGMLContext *context,
+                            float value)
+{
+  return ggml_tensor_from_tensor (context, ggml_new_f32 (context->ctx, value));
+}
+
 /**
  * ggml_tensor_ref: (skip)
  * @tensor: A #GGMLTensor
