@@ -112,6 +112,10 @@ void ggml_tensor_set_data_from_int32_array (GGMLTensor *tensor,
 char * ggml_tensor_get_data (GGMLTensor *tensor, size_t *out_n_bytes);
 GBytes * ggml_tensor_get_bytes (GGMLTensor *tensor);
 
+void ggml_tensor_set_name (GGMLTensor *tensor,
+                           const char *name);
+const char * ggml_tensor_get_name (GGMLTensor *tensor);
+
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLTensor, ggml_tensor_unref)
 
 size_t ggml_data_type_size (GGMLDataType data_type);

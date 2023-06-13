@@ -504,6 +504,33 @@ ggml_tensor_set_data_from_int32_array (GGMLTensor *tensor,
 }
 
 /**
+ * ggml_tensor_set_name:
+ * @tensor: (transfer none): A #GGMLTensor
+ * @name: A string with the tensor name
+ *
+ * Sets the tensor name from @name. The name length limit is 32 characters,
+ * longer names will be truncated.
+ */
+void
+ggml_tensor_set_name (GGMLTensor *tensor,
+                      const char *name)
+{
+  ggml_set_name (tensor->tensor, name);
+}
+
+/**
+ * ggml_tensor_get_name:
+ * @tensor: (transfer none): A #GGMLTensor
+ *
+ * Returns: (transfer none): The tensor name
+ */
+const char *
+ggml_tensor_get_name (GGMLTensor *tensor)
+{
+  return ggml_get_name (tensor->tensor);
+}
+
+/**
  * ggml_data_type_size: 
  * @data_type: A #GGMLDataType
  *
