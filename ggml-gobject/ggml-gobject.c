@@ -275,36 +275,44 @@ struct _GGMLLanguageModel {
 };
 
 static GGMLTensor *
-ggml_tensor_new_1d (GGMLContext *context, GGMLDataType data_type, size_t size)
+ggml_tensor_from_tensor (GGMLContext *context, struct ggml_tensor *base_tensor)
 {
   GGMLTensor *tensor = g_new0 (GGMLTensor, 1);
   tensor->ref_count = 1;
   tensor->owning_context = ggml_context_ref (context);
-  tensor->tensor = ggml_new_tensor_1d (tensor->owning_context->ctx, (enum ggml_type) data_type, size);
+  tensor->tensor = base_tensor;
 
   return tensor;
+}
+
+static GGMLTensor *
+ggml_tensor_new_1d (GGMLContext *context, GGMLDataType data_type, size_t size)
+{
+  return ggml_tensor_from_tensor (context,
+                                  ggml_new_tensor_1d (context->ctx,
+                                                      (enum ggml_type) data_type,
+                                                      size));
 }
 
 static GGMLTensor *
 ggml_tensor_new_2d (GGMLContext *context, GGMLDataType data_type, size_t width, size_t height)
 {
-  GGMLTensor *tensor = g_new0 (GGMLTensor, 1);
-  tensor->ref_count = 1;
-  tensor->owning_context = ggml_context_ref (context);
-  tensor->tensor = ggml_new_tensor_2d (tensor->owning_context->ctx, (enum ggml_type) data_type, width, height);
-
-  return tensor;
+  return ggml_tensor_from_tensor (context,
+                                  ggml_new_tensor_2d (context->ctx,
+                                                      (enum ggml_type) data_type,
+                                                      width,
+                                                      height));
 }
 
 static GGMLTensor *
 ggml_tensor_new_3d (GGMLContext *context, GGMLDataType data_type, size_t width, size_t height, size_t depth)
 {
-  GGMLTensor *tensor = g_new0 (GGMLTensor, 1);
-  tensor->ref_count = 1;
-  tensor->owning_context = ggml_context_ref (context);
-  tensor->tensor = ggml_new_tensor_3d (tensor->owning_context->ctx, (enum ggml_type) data_type, width, height, depth);
-
-  return tensor;
+  return ggml_tensor_from_tensor (context,
+                                  ggml_new_tensor_3d (context->ctx,
+                                                      (enum ggml_type) data_type,
+                                                      width,
+                                                      height,
+                                                      depth));
 }
 
 /**
