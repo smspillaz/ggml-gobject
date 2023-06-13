@@ -1235,6 +1235,32 @@ ggml_load_model_from_istream (GInputStream                           *istream,
   return g_steal_pointer (&model);
 }
 
+static void
+ggml_model_set_possible_tied_weights (GGMLModel *model,
+                                      const char **loaded_keys,
+                                      const char **src_weights,
+                                      const char **dst_weights)
+{
+  const char **src_weights_it = src_weights;
+  const char **dst_weights_it = dst_weights;
+
+  for (; *src_weights_it != NULL && *dst_weights_it != NULL; ++src_weights_it, ++dst_weights_it)
+    {
+      if (!g_strv_contains (loaded_keys, *dst_weights_it) && g_strv_contains (loaded_keys, *src_weights_it))
+        {
+          GGMLTensor *src_tensor = ggml_model_get (model, *src_weights_it);
+          GGMLTensor *dst_tensor = ggml_model_get (model, *dst_weights_it);
+
+          g_assert (src_tensor != NULL);
+          g_assert (dst_tensor != NULL);
+
+          size_t src_n_bytes = 0;
+          char *src_data = ggml_tensor_get_data (src_tensor, &src_n_bytes);
+          ggml_tensor_set_data (dst_tensor, src_data, src_n_bytes);
+        }
+    }
+}
+
 /**
  * ggml_language_model_load_from_istream:
  * @istream: (transfer none): A #GInputStream
@@ -1282,6 +1308,10 @@ ggml_language_model_load_from_istream (GInputStream *istream,
                                                              &loaded_keys,
                                                              cancellable,
                                                              error);
+
+  const char *src_weights[] = {"model/wte", NULL};
+  const char *dst_weights[] = {"model/lm_head", NULL};
+  ggml_model_set_possible_tied_weights (model, (const char **) loaded_keys, src_weights, dst_weights);
 
   if (model == NULL)
     {
