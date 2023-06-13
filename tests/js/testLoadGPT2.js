@@ -117,6 +117,7 @@ describe('GGML GPT2', function() {
         hyperparameters.get_int32('n_layer'),
         hyperparameters.get_int32('n_ctx')
       ),
+      null,
       null
     );
   });
