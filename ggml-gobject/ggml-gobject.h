@@ -144,8 +144,8 @@ GGMLHyperparameters *ggml_hyperparameters_new (const char **ordered_keys,
 int32_t ggml_hyperparameters_get_int32 (GGMLHyperparameters *hyperparameters,
                                         const char *key);
 GGMLHyperparameters *
-ggml_hyperparameters_copy (GGMLHyperparameters *hyperparameters);
-void ggml_hyperparameters_free (GGMLHyperparameters *hyperparameters);
+ggml_hyperparameters_ref (GGMLHyperparameters *hyperparameters);
+void ggml_hyperparameters_unref (GGMLHyperparameters *hyperparameters);
 
 /**
  * GGMLModelDescFromHyperparametersFunc:

@@ -259,6 +259,7 @@ struct _GGMLModel {
 struct _GGMLHyperparameters {
   gchar **ordered_keys;
   GHashTable *parameters;
+  size_t ref_count;
 };
 
 struct _GGMLTokenDictionary {
@@ -669,6 +670,7 @@ ggml_hyperparameters_new (const char **ordered_keys, int *ordered_values, size_t
 
   parameters->ordered_keys = g_strdupv ((char **) ordered_keys);
   parameters->parameters = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, NULL);
+  parameters->ref_count = 1;
 
   const char **ordered_keys_iterator = ordered_keys;
   int *ordered_values_iterator = ordered_values;
@@ -703,42 +705,36 @@ ggml_hyperparameters_get_int32 (GGMLHyperparameters *hyperparameters, const char
 }
 
 /**
- * ggml_hyperparameters_copy: 
+ * ggml_hyperparameters_ref:
  * @hyperparameters: A #GGMLHyperparameters
  *
- * Returns: (transfer full): A new #GGMLHyperparameters which is a copy of @hyperparameters
+ * Returns: (transfer full): The #GGMLHyperparameters with the increased ref count.
  */
 GGMLHyperparameters *
-ggml_hyperparameters_copy (GGMLHyperparameters *hyperparameters)
+ggml_hyperparameters_ref (GGMLHyperparameters *hyperparameters)
 {
-  g_autofree int *ordered_values = g_new0 (int, g_strv_length (hyperparameters->ordered_keys));
-
-  const char **ordered_keys_iterator = (const char **) hyperparameters->ordered_keys;
-  int *ordered_values_iterator = ordered_values;
-
-  while (*ordered_keys_iterator != NULL)
-    {
-      *(ordered_values_iterator++) = GPOINTER_TO_INT (g_hash_table_lookup (hyperparameters->parameters, *(ordered_keys_iterator++)));
-    }
-
-  return ggml_hyperparameters_new ((const char **) hyperparameters->ordered_keys, ordered_values, g_strv_length (hyperparameters->ordered_keys));
+  ++hyperparameters->ref_count;
+  return hyperparameters;
 }
 
 /**
- * ggml_hyperparameters_free: (skip)
+ * ggml_hyperparameters_unref: (skip)
  * @hyperparameters: A #GGMLHyperparameters
  *
  * Frees the @hyperparameters
  */
 void
-ggml_hyperparameters_free (GGMLHyperparameters *hyperparameters)
+ggml_hyperparameters_unref (GGMLHyperparameters *hyperparameters)
 {
-  g_clear_pointer (&hyperparameters->parameters, g_hash_table_destroy);
-  g_clear_pointer (&hyperparameters->ordered_keys, g_strfreev);
-  g_clear_pointer (&hyperparameters, g_free);
+  if (--hyperparameters->ref_count == 0)
+    {
+      g_clear_pointer (&hyperparameters->parameters, g_hash_table_destroy);
+      g_clear_pointer (&hyperparameters->ordered_keys, g_strfreev);
+      g_clear_pointer (&hyperparameters, g_free);
+    }
 }
 
-G_DEFINE_BOXED_TYPE (GGMLHyperparameters, ggml_hyperparameters, ggml_hyperparameters_copy, ggml_hyperparameters_free)
+G_DEFINE_BOXED_TYPE (GGMLHyperparameters, ggml_hyperparameters, ggml_hyperparameters_ref, ggml_hyperparameters_unref)
 
 
 /**
@@ -940,7 +936,7 @@ GGMLLanguageModel *
 ggml_language_model_new (GGMLHyperparameters *hyperparameters, GGMLTokenDictionary *dictionary, GGMLModel *model)
 {
   GGMLLanguageModel *language_model = g_new0 (GGMLLanguageModel, 1);
-  language_model->hyperparameters = ggml_hyperparameters_copy (hyperparameters);
+  language_model->hyperparameters = ggml_hyperparameters_ref (hyperparameters);
   language_model->token_dictionary = ggml_token_dictionary_ref (dictionary);
   language_model->model = ggml_model_ref (model);
   language_model->ref_count = 1;
@@ -1296,7 +1292,7 @@ ggml_language_model_unref (GGMLLanguageModel *language_model)
 {
   if (--language_model->ref_count == 0)
     {
-      g_clear_pointer (&language_model->hyperparameters, ggml_hyperparameters_free);
+      g_clear_pointer (&language_model->hyperparameters, ggml_hyperparameters_unref);
       g_clear_pointer (&language_model->token_dictionary, ggml_token_dictionary_unref);
       g_clear_pointer (&language_model->model, ggml_model_unref);
       g_clear_pointer (&language_model, g_free);
