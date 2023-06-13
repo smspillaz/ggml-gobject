@@ -55,6 +55,13 @@ function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
             ])
           )
         }
+      ),
+      "memory": GGML.ModelDescNode.new(
+        null,
+        {
+          "k": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
+          "v": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
+        }
       )
     }
   );
