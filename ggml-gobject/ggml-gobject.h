@@ -118,6 +118,9 @@ const char * ggml_tensor_get_name (GGMLTensor *tensor);
 
 int64_t *ggml_tensor_get_shape (GGMLTensor *tensor, size_t *out_n_dims);
 
+GPtrArray * ggml_tensor_get_cgraph_children (GGMLTensor *tensor);
+int64_t ggml_tensor_get_cgraph_perf_us (GGMLTensor *tensor);
+
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLTensor, ggml_tensor_unref)
 
 size_t ggml_data_type_size (GGMLDataType data_type);

@@ -557,6 +557,62 @@ ggml_tensor_get_shape (GGMLTensor *tensor, size_t *out_n_dims)
 }
 
 /**
+ * ggml_tensor_get_cgraph_children:
+ * @tensor: (transfer none): A #GGMLTensor
+ *
+ * Get the child tensors of this @tensor according to the most recent computation graph.
+ *
+ * A child tensor of a tensor is one that is antecedent to it, eg, if a = b + c, then the children
+ * of 'a' are 'b' and 'c'.
+ *
+ * Returns: (transfer full) (element-type GGMLTensor): A #GPtrArray of #GGMLTensor objects
+ *          wrapping each of the antecedent children of this tensor according to the most recent
+ *          compute graph.
+ */
+GPtrArray *
+ggml_tensor_get_cgraph_children (GGMLTensor *tensor)
+{
+  g_autoptr(GPtrArray) children = g_ptr_array_new_null_terminated (2, (GDestroyNotify) ggml_tensor_unref, TRUE);
+
+  if (tensor->tensor->src0 != NULL)
+    {
+      /* XXX: This isn't strictly speaking correct -
+       * tensor->owning_context->ctx might be different
+       * from tensor->src0's context, meaning that if
+       * the context is unref'd then tensor->src0's memory
+       * goes away. */
+      g_ptr_array_add (children,
+                       ggml_tensor_from_tensor (tensor->owning_context, tensor->tensor->src0));
+    }
+
+if (tensor->tensor->src1 != NULL)
+    {
+      /* XXX: This isn't strictly speaking correct -
+       * tensor->owning_context->ctx might be different
+       * from tensor->src0's context, meaning that if
+       * the context is unref'd then tensor->src0's memory
+       * goes away. */
+      g_ptr_array_add (children,
+                       ggml_tensor_from_tensor (tensor->owning_context, tensor->tensor->src1));
+    }
+
+  return g_steal_pointer (&children);
+}
+
+/**
+ * ggml_tensor_get_cgraph_perf_us:
+ * @tensor: A #GGMLTensor
+ *
+ * Returns: The average number of microseconds spent on computation in the most recent
+ *          compute graph.
+ */
+int64_t
+ggml_tensor_get_cgraph_perf_us (GGMLTensor *tensor)
+{
+  return (int32_t) (tensor->tensor->perf_time_us / ((float) tensor->tensor->perf_runs));
+}
+
+/**
  * ggml_data_type_size: 
  * @data_type: A #GGMLDataType
  *
