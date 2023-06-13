@@ -154,6 +154,22 @@ typedef GGMLModelDescNode *(*GGMLModelDescFromHyperparametersFunc) (
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLHyperparameters, ggml_hyperparameters_unref)
 
+/* Need a forward declaration here of GGMLContext */
+typedef struct _GGMLContext GGMLContext;
+
+typedef struct _GGMLComputeGraph GGMLComputeGraph;
+
+#define GGML_TYPE_COMPUTE_GRAPH ggml_compute_graph_get_type ()
+GType ggml_compute_graph_get_type (void);
+
+GGMLComputeGraph * ggml_compute_graph_new (size_t n_threads);
+GGMLComputeGraph * ggml_compute_graph_ref (GGMLComputeGraph *compute_graph);
+void ggml_compute_graph_unref (GGMLComputeGraph *compute_graph);
+void ggml_compute_graph_build_forward_expand (GGMLComputeGraph *compute_graph, GGMLTensor *tensor);
+void ggml_compute_graph_compute (GGMLComputeGraph *compute_graph, GGMLContext *context);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLComputeGraph, ggml_compute_graph_unref);
+
 typedef struct _GGMLModel GGMLModel;
 
 #define GGML_TYPE_MODEL (ggml_model_get_type ());
