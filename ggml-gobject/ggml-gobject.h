@@ -150,6 +150,7 @@ void ggml_hyperparameters_unref (GGMLHyperparameters *hyperparameters);
 /**
  * GGMLModelDescFromHyperparametersFunc:
  * @param hyperparameters: (transfer none): A #GGMLHyperparameters
+ * @param user_data: (transfer none) (closure): A gpointer containing user-specified data
  *
  * Create a new #GGMLModelDescNode from a #GGMLHyperparameters
  *
@@ -159,9 +160,10 @@ void ggml_hyperparameters_unref (GGMLHyperparameters *hyperparameters);
  * Returns: (transfer full): A new #GGMLModelDescNode
  */
 typedef GGMLModelDescNode *(*GGMLModelDescFromHyperparametersFunc) (
-    GGMLHyperparameters *hyperparameters);
+    GGMLHyperparameters *hyperparameters,
+    gpointer user_data);
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLHyperparameters, ggml_hyperparameters_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLHyperparameters, ggml_hyperparameters_unref)
 
 typedef struct _GGMLTokenDictionary GGMLTokenDictionary;
 

@@ -1182,17 +1182,29 @@ ggml_model_load_weights_from_istream (GInputStream *istream, GGMLModel *model, G
         }
 
       /* Now we can read the tensor */
-      if (!input_stream_read_exactly (istream, ggml_tensor_get_data_ptr (tensor), allocated_bytes, cancellable, error))
+      if (!input_stream_read_exactly (istream, tensor_data_ptr, allocated_bytes, cancellable, error))
         {
           return FALSE;
         }
+
+      g_ptr_array_add (loaded_keys, g_strdup (name_buffer));
+    }
+
+  if (out_loaded_keys != NULL)
+    {
+      *out_loaded_keys = (char **) g_ptr_array_steal (loaded_keys, NULL);
     }
 
   return TRUE;
 }
 
 static GGMLModel *
-ggml_load_model_from_istream (GInputStream *istream, GGMLModelDescFromHyperparametersFunc create_model_desc, GGMLHyperparameters *hyperparameters, GCancellable *cancellable, GError **error)
+ggml_load_model_from_istream (GInputStream                           *istream,
+                              GGMLModelDescFromHyperparametersFunc    create_model_desc,
+                              gpointer                                create_model_desc_user_data,
+                              GGMLHyperparameters                    *hyperparameters,
+                              GCancellable                           *cancellable,
+                              GError                                **error)
 {
   const int32_t n_embd = ggml_hyperparameters_get_int32 (hyperparameters, "n_embd");
   const int32_t n_layer = ggml_hyperparameters_get_int32 (hyperparameters, "n_layer");
@@ -1203,7 +1215,7 @@ ggml_load_model_from_istream (GInputStream *istream, GGMLModelDescFromHyperparam
 
   size_t memory_size = ggml_estimate_transformer_model_memory (n_vocab, n_embd, n_head, n_layer, n_ctx, ftype);
   g_autoptr (GGMLContext) context = ggml_context_new (memory_size);
-  g_autoptr (GGMLModelDescNode) model_desc_node = (*create_model_desc) (hyperparameters);
+  g_autoptr (GGMLModelDescNode) model_desc_node = (*create_model_desc) (hyperparameters, create_model_desc_user_data);
   g_autoptr (GHashTable) flattened_desc = ggml_model_desc_node_flatten (model_desc_node);
   g_autoptr (GGMLModel) model = ggml_context_new_model_from_flattened_desc (context, flattened_desc);
 
@@ -1220,6 +1232,7 @@ ggml_load_model_from_istream (GInputStream *istream, GGMLModelDescFromHyperparam
  * ggml_language_model_load_from_istream:
  * @istream: (transfer none): A #GInputStream
  * @create_model_desc: (transfer none) (scope call): A #GGMLModelDescFromHyperparametersFunc to specify the model structure and weights
+ * @create_model_desc_user_data: (closure create_model_desc): A closure for @create_model_desc
  * @cancellable: (transfer none) (nullable): A #GCancellable
  * @error: (nullable): A #GError
  *
@@ -1229,7 +1242,11 @@ ggml_load_model_from_istream (GInputStream *istream, GGMLModelDescFromHyperparam
  * Returns: (transfer full): A #GGMLLanguageModel with the loaded weights on success
  */
 GGMLLanguageModel *
-ggml_language_model_load_from_istream (GInputStream *istream, GGMLModelDescFromHyperparametersFunc create_model_desc, GCancellable *cancellable, GError **error)
+ggml_language_model_load_from_istream (GInputStream *istream,
+                                       GGMLModelDescFromHyperparametersFunc create_model_desc,
+                                       gpointer create_model_desc_user_data,
+                                       GCancellable *cancellable,
+                                       GError **error)
 {
   if (!ggml_language_model_consume_istream_magic (istream, cancellable, error))
     {
@@ -1250,7 +1267,12 @@ ggml_language_model_load_from_istream (GInputStream *istream, GGMLModelDescFromH
       return NULL;
     }
 
-  g_autoptr(GGMLModel) model = ggml_load_model_from_istream (istream, create_model_desc, hyperparameters, cancellable, error);
+  g_autoptr(GGMLModel) model = ggml_load_model_from_istream (istream,
+                                                             create_model_desc,
+                                                             create_model_desc_user_data,
+                                                             hyperparameters,
+                                                             cancellable,
+                                                             error);
 
   if (model == NULL)
     {
