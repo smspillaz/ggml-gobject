@@ -395,4 +395,25 @@ describe('GGML GPT2', function() {
       'The meaning of life is: to live in a world of abundance'
     );
   });
+  it('can do a forward pass defined in JS through some data', function() {
+    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
+    const istream = file.read(null);
+
+    const language_model = GGML.LanguageModel.load_from_istream(
+      istream,
+      (hyperparameters) => createModelDescGPT2(
+        hyperparameters.get_int32('n_vocab'),
+        hyperparameters.get_int32('n_embd'),
+        hyperparameters.get_int32('n_embd') * 4,
+        hyperparameters.get_int32('n_layer'),
+        hyperparameters.get_int32('n_ctx')
+      ),
+      gpt2ForwardPass,
+      null
+    );
+
+    expect(language_model.complete('The meaning of life is:', 7)).toEqual(
+      'The meaning of life is: to live in a world of abundance'
+    );
+  });
 })
