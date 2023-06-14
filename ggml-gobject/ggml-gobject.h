@@ -189,6 +189,9 @@ GType ggml_model_get_type (void);
  * @user_data: (closure): A closure with user data to evaluate the function
  * @error: A #GError out-variable
  *
+ * XXX: We would like to be able to return a #GPtrArray of output nodes here and avoid passing
+ * the @compute_graph, but it seems that gjs struggles to handle a transfer full #GPtrArray out-param.
+ *
  * Returns: (transfer full): A new #GGMLTensor output node, used to define a computation graph for a forward pass,
  *          or %NULL with @error set on failure. Note that this callback doesn't actually compute the end result,
  *          merely just defines the compute graph.
