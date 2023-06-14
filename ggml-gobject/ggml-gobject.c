@@ -240,6 +240,7 @@ G_DEFINE_BOXED_TYPE (GGMLModelDescNode,
                      ggml_model_desc_node_unref)
 
 struct _GGMLContext {
+  GBytes *mem_buffer;
   struct ggml_context *ctx;
   size_t ref_count;
 };
@@ -1692,6 +1693,41 @@ ggml_language_model_unref (GGMLLanguageModel *language_model)
 G_DEFINE_BOXED_TYPE (GGMLLanguageModel, ggml_language_model, ggml_language_model_ref, ggml_language_model_unref);
 
 /**
+ * ggml_context_new_from_mem_buffer:
+ * @mem_buffer: A #GBytes with a memory pool for this context
+ *
+ * Creates a new #GGMLContext and memory pool from which #GGMLTensor
+ * objects can be allocated. The @mem_buffer parameter's size is important -
+ * you need to properly estimate it upfront, for example by using
+ * what you know about the model architecture to be allocated, or
+ * how many elements you will have in the input etc.
+ *
+ * Returns: (transfer full): A new #GGMLContext
+ */
+GGMLContext *
+ggml_context_new_from_mem_buffer (GBytes *mem_buffer)
+{
+  GGMLContext *context = g_new0 (GGMLContext, 1);
+  context->mem_buffer = g_bytes_ref (mem_buffer);
+
+  size_t mem_buffer_size;
+  gpointer mem_buffer_ptr = (gpointer) g_bytes_get_data (context->mem_buffer, &mem_buffer_size);
+
+  struct ggml_init_params params = {
+    .mem_size = mem_buffer_size,
+    .mem_buffer = mem_buffer_ptr,
+    .no_alloc = FALSE,
+  };
+
+  context->ctx = ggml_init (params);
+  context->ref_count = 1;
+
+  g_assert (context->ctx != NULL);
+
+  return context;
+}
+
+/**
  * ggml_context_new:
  * @memory_size: The size of the memory pool for this context
  *
@@ -1706,19 +1742,8 @@ G_DEFINE_BOXED_TYPE (GGMLLanguageModel, ggml_language_model, ggml_language_model
 GGMLContext *
 ggml_context_new (size_t memory_size)
 {
-  GGMLContext *context = g_new0 (GGMLContext, 1);
-  struct ggml_init_params params = {
-    .mem_size = memory_size,
-    .mem_buffer = NULL,
-    .no_alloc = FALSE,
-  };
-
-  context->ctx = ggml_init (params);
-  context->ref_count = 1;
-
-  g_assert (context->ctx != NULL);
-
-  return context;
+  g_autoptr(GBytes) mem_buffer = g_bytes_new (g_malloc (memory_size), memory_size);
+  return ggml_context_new_from_mem_buffer (mem_buffer);
 }
 
 /**
@@ -1750,6 +1775,7 @@ ggml_context_unref (GGMLContext *context)
   if (--context->ref_count == 0)
     {
       g_clear_pointer (&context->ctx, ggml_free);
+      g_clear_pointer (&context->mem_buffer, g_bytes_unref);
       g_clear_pointer (&context, g_free);
     }
 }

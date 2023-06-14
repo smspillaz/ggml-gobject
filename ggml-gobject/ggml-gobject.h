@@ -258,6 +258,7 @@ typedef struct _GGMLContext GGMLContext;
 #define GGML_TYPE_CONTEXT (ggml_context_get_type ())
 GType ggml_context_get_type (void);
 
+GGMLContext *ggml_context_new_from_mem_buffer (GBytes *mem_buffer);
 GGMLContext *ggml_context_new (size_t memory_size);
 GGMLContext *ggml_context_ref (GGMLContext *context);
 void ggml_context_unref (GGMLContext *context);
