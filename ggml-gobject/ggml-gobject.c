@@ -1376,7 +1376,7 @@ ggml_gpt_model_forward_pass (GGMLModel *model,
 
   g_autoptr(GGMLTensor) initial_inputs = ggml_op_add (context, wte_rows, wpe_rows);
 
-  GGMLTensor *residual = ggml_tensor_ref (initial_inputs);
+  g_autoptr(GGMLTensor) residual = ggml_tensor_ref (initial_inputs);
 
   for (size_t i = 0; i < n_layer; ++i)
     {
@@ -1396,8 +1396,11 @@ ggml_gpt_model_forward_pass (GGMLModel *model,
                                                            &save_mem_k,
                                                            &save_mem_v);
 
-      /* Keep the residual around */
+      /* Keep the layer_output around as the next residual */
       g_clear_pointer (&residual, ggml_tensor_unref);
+
+      /* Assigning here is fine because we the final one gets
+       * owned by the autoptr and the prior ones are unref'd manually. */
       residual = layer_output;
 
       /* Now we need to add the memories to the compute graph
