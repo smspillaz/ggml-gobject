@@ -1992,7 +1992,7 @@ ggml_language_model_load_from_istream (GInputStream *istream,
       return NULL;
     }
 
-  g_autofree char **loaded_keys = NULL;
+  g_auto(GStrv) loaded_keys = NULL;
   g_autoptr(GGMLModel) model = ggml_load_model_from_istream (istream,
                                                              create_model_desc,
                                                              create_model_desc_user_data,
