@@ -304,6 +304,11 @@ GGMLTensor * ggml_gpt_model_forward_pass (GGMLModel *model,
                                           GBytes *mem_buffer,
                                           gpointer user_data,
                                           GError **error);
+GGMLModelDescNode * ggml_create_gpt2_model_desc (int32_t n_vocab,
+                                                 int32_t d_model,
+                                                 int32_t d_ff,
+                                                 int32_t n_layer,
+                                                 int32_t n_ctx);
 
 /* Some macros here to forward declare bindings. Macros are bad
  * but these save a lot of work. */
