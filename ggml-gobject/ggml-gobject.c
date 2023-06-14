@@ -737,6 +737,7 @@ ggml_model_unref (GGMLModel *model)
  * @hyperparameters: (transfer none) (nullable): A #GGMLHyperparameters for the model
  * @inputs: (transfer none): An #GVariant with some inputs
  * @forward_parameters: (element-type utf8 int) (transfer none) (nullable): A #GHashTable with evaluation-specific parameters
+ * @mem_buffer: (transfer none) (nullable): A #GBytes memory buffer that can be re-used.
  * @error: A #GError out-parameter
  *
  * Does a forward pass on the model to define the compute graph, then runs the computation.
@@ -748,6 +749,7 @@ ggml_model_forward (GGMLModel *model,
                     GGMLHyperparameters *hyperparameters,
                     GVariant *inputs,
                     GHashTable *forward_parameters,
+                    GBytes   *mem_buffer,
                     GError **error)
 {
   g_autoptr(GGMLComputeGraph) compute_graph = ggml_compute_graph_new (2);
@@ -756,6 +758,7 @@ ggml_model_forward (GGMLModel *model,
                                                          inputs,
                                                          forward_parameters,
                                                          compute_graph,
+                                                         mem_buffer,
                                                          model->forward_func_user_data,
                                                          error);
 
@@ -1413,6 +1416,7 @@ static gboolean
 ggml_language_model_forward_single_iteration (GGMLModel            *model,
                                               GGMLHyperparameters  *hyperparameters,
                                               GHashTable           *inference_parameters,
+                                              GBytes               *mem_buffer,
                                               int32_t              *input_tokens,
                                               size_t                n_input_tokens,
                                               int32_t              *out_token,
@@ -1427,6 +1431,7 @@ ggml_language_model_forward_single_iteration (GGMLModel            *model,
                                                             hyperparameters,
                                                             variant,
                                                             inference_parameters,
+                                                            mem_buffer,
                                                             error);
 
   if (logits_tensor == NULL)
@@ -1469,11 +1474,17 @@ ggml_language_model_forward_loop (GGMLModel           *model,
       return g_array_steal (prompt_tokens, out_num_tokens);
     }
 
+  /* Create a memory buffer for prompt_tokens->len. Because we do subsequent
+   * passes using a single query (saved keys and values), we only need to allocate
+   * this much memory. */
+  g_autoptr(GBytes) mem_buffer = ggml_gpt_model_forward_pass_create_memory_buffer (prompt_tokens->len);
+
   /* We first do a single iteration to populate the key/value memories */
   int32_t argmax;
   if (!ggml_language_model_forward_single_iteration (model,
                                                      hyperparameters,
                                                      inference_parameters,
+                                                     mem_buffer,
                                                      (int32_t *) prompt_tokens->data,
                                                      prompt_tokens->len,
                                                      &argmax,
@@ -1497,6 +1508,7 @@ ggml_language_model_forward_loop (GGMLModel           *model,
       if (!ggml_language_model_forward_single_iteration (model,
                                                          hyperparameters,
                                                          inference_parameters,
+                                                         mem_buffer,
                                                          ((int32_t *) prompt_tokens->data) + n_initial_prompt_tokens + i,
                                                          1,
                                                          &argmax,

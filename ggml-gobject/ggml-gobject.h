@@ -185,6 +185,7 @@ GType ggml_model_get_type (void);
  * @inputs: (transfer none): A #GVariant with inputs used for the forward computation
  * @input_parameters: (nullable) (element-type utf8 int): A #GHashTable with some parameters for the input
  * @compute_graph: (transfer none): A #GGMLComputeGraph which can be added to.
+ * @mem_buffer: (transfer none) (nullable): A #GBytes memory buffer to be re-used.
  * @user_data: (closure): A closure with user data to evaluate the function
  * @error: A #GError out-variable
  *
@@ -197,6 +198,7 @@ typedef GGMLTensor * (*GGMLModelForwardFunc) (GGMLModel   *model,
                                               GVariant    *inputs,
                                               GHashTable  *input_parameters,
                                               GGMLComputeGraph *compute_graph,
+                                              GBytes      *mem_buffer,
                                               gpointer     user_data,
                                               GError     **error);
 
@@ -207,6 +209,7 @@ GGMLTensor *ggml_model_forward (GGMLModel *model,
                                 GGMLHyperparameters *hyperparameters,
                                 GVariant *inputs,
                                 GHashTable *forward_parameters,
+                                GBytes   *mem_buffer,
                                 GError **error);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModel, ggml_model_unref)
