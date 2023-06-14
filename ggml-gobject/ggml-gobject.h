@@ -293,6 +293,14 @@ gboolean ggml_gpt_tokenize (GGMLTokenDictionary *token_dictionary,
 char * ggml_token_dictionary_decode (GGMLTokenDictionary *token_dictionary,
                                      int32_t *tokens,
                                      size_t n_tokens);
+GGMLTensor * ggml_gpt_model_forward_pass (GGMLModel *model,
+                                          GGMLHyperparameters *hyperparameters,
+                                          GVariant *inputs,
+                                          GHashTable *input_parameters,
+                                          GGMLComputeGraph *cgraph,
+                                          GBytes *mem_buffer,
+                                          gpointer user_data,
+                                          GError **error);
 
 /* Some macros here to forward declare bindings. Macros are bad
  * but these save a lot of work. */
