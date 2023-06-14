@@ -152,11 +152,6 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
       context,
       GGML.op_reshape_3d(
         context,
-        /*GGML.op_cpy(
-          context,
-          Kcur,
-          context.new_tensor_3d(GGML.DataType.F32, n_embd / nhead, nhead, n_tokens)
-        ),*/
         GGML.op_view_1d(
           context,
           memory_k,
@@ -180,11 +175,6 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
         context,
         GGML.op_reshape_3d(
           context,
-          /*GGML.op_cpy(
-            context,
-            Kcur,
-            context.new_tensor_3d(GGML.DataType.F32, n_embd / nhead, nhead, n_tokens)
-          ),*/
           GGML.op_view_1d(
             context,
             memory_v,
