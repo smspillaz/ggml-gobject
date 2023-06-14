@@ -28,6 +28,7 @@ ggml_dep = compiler.find_library(
     'ggml',
     required: true
 )
+m_dep = compiler.find_library('m', required : true)
 glib = dependency('glib-2.0')
 gio = dependency('gio-2.0')
 gobject = dependency('gobject-2.0')
