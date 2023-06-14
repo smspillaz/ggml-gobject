@@ -1,6 +1,6 @@
 # ggml-gobject
 
-A GObject binding for GGML.
+A GObject binding for [GGML](https://github.com/ggerganov/ggml).
 
 A simple "hello world" example works, eg, loading the GPT2 model weights
 and doing inference on a simple sentence. However the user currently has to
