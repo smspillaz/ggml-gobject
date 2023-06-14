@@ -1458,7 +1458,7 @@ ggml_language_model_forward_loop (GGMLModel           *model,
   g_autoptr(GArray) prompt_tokens = g_array_sized_new (FALSE, TRUE, sizeof (int32_t), n_initial_prompt_tokens + num_iterations);
   g_autoptr(GHashTable) inference_parameters = g_hash_table_new_full (g_str_hash, g_str_equal, NULL , NULL);
 
-  g_hash_table_insert (inference_parameters, n_past_key, GINT_TO_POINTER (0));
+  g_hash_table_insert (inference_parameters, (gpointer) n_past_key, GINT_TO_POINTER (0));
 
   memcpy (prompt_tokens->data, initial_prompt_tokens, sizeof (int32_t) * n_initial_prompt_tokens);
   prompt_tokens->len = n_initial_prompt_tokens;
