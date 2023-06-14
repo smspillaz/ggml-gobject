@@ -2283,7 +2283,7 @@ ggml_compute_graph_ref (GGMLComputeGraph *compute_graph)
 void
 ggml_compute_graph_unref (GGMLComputeGraph *compute_graph)
 {
-  if (--compute_graph->ref_count)
+  if (--compute_graph->ref_count == 0)
     {
       g_clear_pointer (&compute_graph, g_free);
     }
