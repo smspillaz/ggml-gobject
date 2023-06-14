@@ -395,13 +395,9 @@ describe('GGML GPT2', function() {
         hyperparameters.get_int32('n_layer'),
         hyperparameters.get_int32('n_ctx')
       ),
-      (...args) => {
-        try {
-          return gpt2ForwardPass(...args);
-        } catch (e) {
-          throw new Error(e.message + e.stack);
-        }
-      },
+      // Bug in gjs - the "user_data" parameter is marked "skip" but it is
+      // still in the function signature, so we have to curry here.
+      (...args) => GGML.gpt_model_forward_pass(...args, null),
       null
     );
 
