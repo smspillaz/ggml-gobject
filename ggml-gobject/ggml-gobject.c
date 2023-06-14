@@ -1692,7 +1692,7 @@ ggml_language_model_unref (GGMLLanguageModel *language_model)
 G_DEFINE_BOXED_TYPE (GGMLLanguageModel, ggml_language_model, ggml_language_model_ref, ggml_language_model_unref);
 
 /**
- * ggml_context_new: 
+ * ggml_context_new:
  * @memory_size: The size of the memory pool for this context
  *
  * Creates a new #GGMLContext and memory pool from which #GGMLTensor
