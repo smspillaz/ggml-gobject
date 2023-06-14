@@ -67,7 +67,7 @@ function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
   );
 }
 
-const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph) => {
+const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph, mem_buffer) => {
   const [n_vocab, n_embd, n_ff, n_layer, n_ctx, nhead, ftype] = [
     hyperparameters.get_int32('n_vocab'),
     hyperparameters.get_int32('n_embd'),
@@ -84,7 +84,7 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
   /* We assume that this is enough memory for the context */
   const input_ids = inputs.deep_unpack();
   const n_tokens = input_ids.length;
-  const context = GGML.Context.new(256 * 1024 * 1024 + Math.ceil(2048000 * n_tokens * 1.10 * 2));
+  const context = GGML.Context.new_from_mem_buffer(mem_buffer);
   const embedding_indices = context.new_tensor_1d(GGML.DataType.I32, n_tokens);
   embedding_indices.set_data_from_int32_array(input_ids);
   const position_indices = context.new_tensor_1d(GGML.DataType.I32, n_tokens);
