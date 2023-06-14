@@ -353,7 +353,16 @@ describe('GGML GPT2', function() {
     const d_model = 768;
     const d_ff = 4 * 768;
     const n_layers = 12;
-    const model_desc = createModelDescGPT2(n_inp, d_model, d_ff, n_layers);
+    const n_ctx = 1024;
+    const model_desc = GGML.create_gpt2_model_desc(n_inp, d_model, d_ff, n_layers, n_ctx);
+  });
+  it('can construct the GPT2 model architecture in JS', function() {
+    const n_inp = 1024;
+    const d_model = 768;
+    const d_ff = 4 * 768;
+    const n_layers = 12;
+    const n_ctx = 1024;
+    const model_desc = createModelDescGPT2(n_inp, d_model, d_ff, n_layers, n_ctx);
   });
   it('can load the GPT2 weights from a bin file', function() {
     const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
