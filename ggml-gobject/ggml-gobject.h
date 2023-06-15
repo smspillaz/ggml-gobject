@@ -139,6 +139,16 @@ GGMLHyperparameters *
 ggml_hyperparameters_ref (GGMLHyperparameters *hyperparameters);
 void ggml_hyperparameters_unref (GGMLHyperparameters *hyperparameters);
 
+GGMLHyperparameters * ggml_hyperparameters_load_from_istream (GInputStream *istream,
+                                                              GCancellable *cancellable,
+                                                              GError **error);
+void ggml_hyperparameters_load_from_istream_async (GInputStream *istream,
+                                                   GCancellable *cancellable,
+                                                   GAsyncReadyCallback callback,
+                                                   gpointer user_data);
+GGMLHyperparameters * ggml_hyperparameters_load_from_istream_finish (GAsyncResult  *result,
+                                                                     GError       **error);
+
 /**
  * GGMLModelDescFromHyperparametersFunc:
  * @param hyperparameters: (transfer none): A #GGMLHyperparameters
@@ -215,6 +225,28 @@ GGMLTensor *ggml_model_forward (GGMLModel *model,
                                 GBytes   *mem_buffer,
                                 GError **error);
 
+GGMLModel * ggml_model_load_from_istream (GInputStream                           *istream,
+                                          GGMLModelDescNode                      *model_desc_node,
+                                          GGMLHyperparameters                    *hyperparameters,
+                                          GGMLModelForwardFunc                    forward_func,
+                                          gpointer                                forward_func_user_data,
+                                          GDestroyNotify                          forward_func_user_data_destroy,
+                                          char                                 ***out_loaded_keys,
+                                          GCancellable                           *cancellable,
+                                          GError                                **error);
+void ggml_model_load_from_istream_async (GInputStream *istream,
+                                         GGMLModelDescNode *model_desc,
+                                         GGMLHyperparameters *hyperparameters,
+                                         GGMLModelForwardFunc forward_func,
+                                         gpointer forward_func_user_data,
+                                         GDestroyNotify forward_func_user_data_destroy,
+                                         GCancellable *cancellable,
+                                         GAsyncReadyCallback callback,
+                                         gpointer user_data);
+GGMLModel * ggml_model_load_from_istream_finish (GAsyncResult  *result,
+                                                 char        ***out_loaded_keys,
+                                                 GError       **error);
+
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModel, ggml_model_unref)
 
 typedef struct _GGMLTokenDictionary GGMLTokenDictionary;
@@ -230,6 +262,18 @@ gboolean ggml_token_dictionary_lookup_extended (GGMLTokenDictionary *token_dicti
                                                 const char *key,
                                                 int32_t *out_token);
 
+GGMLTokenDictionary * ggml_token_dictionary_load_from_istream (GInputStream *istream,
+                                                               int32_t n_vocab,
+                                                               GCancellable *cancellable,
+                                                               GError **error);
+void ggml_token_dictionary_load_from_istream_async (GInputStream *istream,
+                                                    int32_t       n_vocab,
+                                                    GCancellable *cancellable,
+                                                    GAsyncReadyCallback callback,
+                                                    gpointer user_data);
+GGMLTokenDictionary * ggml_token_dictionary_load_from_istream_finish (GAsyncResult  *result,
+                                                                      GError       **error);
+
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLTokenDictionary,
                                ggml_token_dictionary_unref)
 
@@ -243,6 +287,17 @@ ggml_language_model_new (GGMLHyperparameters *hyperparameters,
                          GGMLTokenDictionary *dictionary, GGMLModel *model);
 GGMLLanguageModel *ggml_language_model_ref (GGMLLanguageModel *language_model);
 void ggml_language_model_unref (GGMLLanguageModel *language_model);
+
+gboolean ggml_language_model_consume_istream_magic (GInputStream *istream,
+                                                    GCancellable *cancellable,
+                                                    GError **error);
+gboolean ggml_language_model_consume_istream_magic_finish (GAsyncResult  *result,
+                                                           GError      **error);
+void ggml_language_model_consume_istream_magic_async (GInputStream         *istream,
+                                                      GCancellable         *cancellable,
+                                                      GAsyncReadyCallback   callback,
+                                                      gpointer              user_data);
+
 GGMLLanguageModel *ggml_language_model_load_from_istream (GInputStream *istream,
                                                           GGMLModelDescFromHyperparametersFunc create_model_desc,
                                                           gpointer create_model_desc_user_data,
@@ -251,6 +306,19 @@ GGMLLanguageModel *ggml_language_model_load_from_istream (GInputStream *istream,
                                                           GDestroyNotify forward_func_user_data_destroy,
                                                           GCancellable *cancellable,
                                                           GError **error);
+
+void ggml_language_model_load_from_istream_async (GInputStream *istream,
+                                                  GGMLModelDescFromHyperparametersFunc create_model_desc,
+                                                  gpointer create_model_desc_user_data,
+                                                  GDestroyNotify create_model_desc_user_data_destroy,
+                                                  GGMLModelForwardFunc forward_func,
+                                                  gpointer forward_func_user_data,
+                                                  GDestroyNotify forward_func_user_data_destroy,
+                                                  GCancellable *cancellable,
+                                                  GAsyncReadyCallback callback,
+                                                  gpointer user_data);
+GGMLLanguageModel * ggml_language_model_load_from_istream_finish (GAsyncResult  *result,
+                                                                  GError       **error);
 
 char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
                                      const char         *prompt,

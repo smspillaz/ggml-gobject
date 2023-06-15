@@ -677,6 +677,205 @@ ggml_model_new_from_flattened_desc (GGMLContext *context,
 }
 
 /**
+ * ggml_model_load_from_istream:
+ * @istream: (transfer none): A #GInputStream
+ * @model_desc_node: (transfer none): A #GGMLModelDescNode
+ * @hyperparameters: (transfer none): A #GGMLHyperparameters
+ * @forward_func: A #GGMLModelForwardFunc
+ * @forward_func_user_data: (closure forward_func): A user-data closure for @forward_func
+ * @forward_func_user_data_destroy: (destroy forward_func): A #GDestroyNotify for @forward_func_user_data
+ * @out_loaded_keys: (out) (transfer full) (nullable): A #GStrv out-parameter for the loaded keys.
+ * @cancellable: (transfer none) (nullable): A #GCancellable
+ * @error: A #GError out-parameter
+ *
+ * Returns: (transfer full): A new #GGMLModel with structure @model_desc_node,
+ *                           loaded from @istream or %NULL with @error set on failure.
+ */
+GGMLModel *
+ggml_model_load_from_istream (GInputStream                           *istream,
+                              GGMLModelDescNode                      *model_desc_node,
+                              GGMLHyperparameters                    *hyperparameters,
+                              GGMLModelForwardFunc                    forward_func,
+                              gpointer                                forward_func_user_data,
+                              GDestroyNotify                          forward_func_user_data_destroy,
+                              char                                 ***out_loaded_keys,
+                              GCancellable                           *cancellable,
+                              GError                                **error)
+{
+  const int32_t n_embd = ggml_hyperparameters_get_int32 (hyperparameters, "n_embd");
+  const int32_t n_layer = ggml_hyperparameters_get_int32 (hyperparameters, "n_layer");
+  const int32_t n_ctx = ggml_hyperparameters_get_int32 (hyperparameters, "n_ctx");
+  const int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
+  const int32_t n_head = ggml_hyperparameters_get_int32 (hyperparameters, "n_head");
+  const int32_t ftype = ggml_hyperparameters_get_int32 (hyperparameters, "ftype");
+
+  size_t memory_size = ggml_estimate_transformer_model_memory (n_vocab, n_embd, n_head, n_layer, n_ctx, ftype);
+  g_autoptr (GGMLContext) context = ggml_context_new (memory_size);
+  g_autoptr (GHashTable) flattened_desc = ggml_model_desc_node_flatten (model_desc_node);
+  g_autoptr (GGMLModel) model = ggml_context_new_model_from_flattened_desc (context,
+                                                                            flattened_desc,
+                                                                            forward_func,
+                                                                            forward_func_user_data,
+                                                                            forward_func_user_data_destroy);
+
+  /* Now that we have the model, we can start loading in the weights */
+  if (!ggml_model_load_weights_from_istream (istream, model, out_loaded_keys, cancellable, error))
+    {
+      return FALSE;
+    }
+
+  return g_steal_pointer (&model);
+}
+
+typedef struct _GGMLModelLoadFromIstreamData
+{
+  GInputStream *istream;
+  GGMLHyperparameters *hyperparameters;
+  GGMLModelDescNode *model_desc_node;
+  GGMLModelForwardFunc forward_func;
+  gpointer forward_func_user_data;
+  GDestroyNotify forward_func_user_data_destroy;
+} GGMLModelLoadFromIstreamData;
+
+static GGMLModelLoadFromIstreamData *
+ggml_model_load_from_istream_data_new (GInputStream *istream,
+                                       GGMLModelDescNode *model_desc_node,
+                                       GGMLHyperparameters *hyperparameters,
+                                       GGMLModelForwardFunc forward_func,
+                                       gpointer forward_func_user_data,
+                                       GDestroyNotify forward_func_user_data_destroy)
+{
+  GGMLModelLoadFromIstreamData *data = g_new0 (GGMLModelLoadFromIstreamData, 1);
+  data->istream = g_object_ref (istream);
+  data->model_desc_node = ggml_model_desc_node_ref (model_desc_node);
+  data->hyperparameters = ggml_hyperparameters_ref (hyperparameters);
+  data->forward_func = forward_func;
+  data->forward_func_user_data = forward_func_user_data;
+  data->forward_func_user_data_destroy = forward_func_user_data_destroy;
+
+  return data;
+}
+
+static void
+ggml_model_load_from_istream_data_free (GGMLModelLoadFromIstreamData *data)
+{
+  g_clear_pointer (&data->istream, g_object_unref);
+  g_clear_pointer (&data->model_desc_node, ggml_model_desc_node_unref);
+  g_clear_pointer (&data->hyperparameters, ggml_hyperparameters_unref);
+  g_clear_pointer (&data->forward_func_user_data, data->forward_func_user_data_destroy);
+  g_clear_pointer (&data, g_free);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModelLoadFromIstreamData, ggml_model_load_from_istream_data_free);
+
+typedef struct _GGMLModelLoadFromIstreamResult
+{
+  GGMLModel *model;
+  GStrv out_loaded_keys;
+} GGMLModelLoadFromIstreamResult;
+
+GGMLModelLoadFromIstreamResult *
+ggml_model_load_from_istream_result_new (GGMLModel *model,
+                                         GStrv out_loaded_keys)
+{
+  GGMLModelLoadFromIstreamResult *result = g_new0 (GGMLModelLoadFromIstreamResult, 1);
+  result->model = ggml_model_ref (model);
+  result->out_loaded_keys = out_loaded_keys; /* transfer full */
+
+  return result;
+}
+
+void
+ggml_model_load_from_istream_result_free (GGMLModelLoadFromIstreamResult *result)
+{
+  g_clear_pointer (&result->model, ggml_model_unref);
+  g_clear_pointer (&result->out_loaded_keys, g_strfreev);
+  g_clear_pointer (&result, g_free);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModelLoadFromIstreamResult, ggml_model_load_from_istream_result_free);
+
+static void
+ggml_model_load_from_istream_async_thread (GTask         *task,
+                                           gpointer       source_object,
+                                           gpointer       task_data,
+                                           GCancellable  *cancellable)
+{
+  g_autoptr(GGMLModelLoadFromIstreamData) data = task_data;
+  g_auto(GStrv) out_loaded_keys;
+  GError *error = NULL;
+
+  g_autoptr(GGMLModel) model = ggml_model_load_from_istream (data->istream,
+                                                             data->model_desc_node,
+                                                             data->hyperparameters,
+                                                             data->forward_func,
+                                                             data->forward_func_user_data,
+                                                             data->forward_func_user_data_destroy,
+                                                             &out_loaded_keys,
+                                                             cancellable,
+                                                             &error);
+
+  if (model == NULL)
+    {
+      g_task_return_error (task, error);
+      return;
+    }
+
+  /* Transfer the forward func to the model */
+  data->forward_func = NULL;
+  data->forward_func_user_data = NULL;
+  data->forward_func_user_data_destroy = NULL;
+
+  /* Need to create a container here */
+  g_autoptr(GGMLModelLoadFromIstreamResult) result = ggml_model_load_from_istream_result_new (model,
+                                                                                              g_steal_pointer (&out_loaded_keys));
+
+  g_task_return_pointer (task, g_steal_pointer (&result), (GDestroyNotify) ggml_model_load_from_istream_result_free);
+}
+
+GGMLModel *
+ggml_model_load_from_istream_finish (GAsyncResult  *result,
+                                     char        ***out_loaded_keys,
+                                     GError       **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, NULL), NULL);
+  GTask *task = G_TASK (result);
+
+  g_autoptr(GGMLModelLoadFromIstreamResult) task_result = g_task_propagate_pointer (task, error);
+
+  if (task_result == NULL)
+    {
+      return NULL;
+    }
+
+  *out_loaded_keys = g_steal_pointer (&task_result->out_loaded_keys);
+  return g_steal_pointer (&task_result->model);
+}
+
+void
+ggml_model_load_from_istream_async (GInputStream *istream,
+                                    GGMLModelDescNode *model_desc,
+                                    GGMLHyperparameters *hyperparameters,
+                                    GGMLModelForwardFunc forward_func,
+                                    gpointer forward_func_user_data,
+                                    GDestroyNotify forward_func_user_data_destroy,
+                                    GCancellable *cancellable,
+                                    GAsyncReadyCallback callback,
+                                    gpointer user_data)
+{
+  g_autoptr(GGMLModelLoadFromIstreamData) data = ggml_model_load_from_istream_data_new(istream,
+                                                                                       model_desc,
+                                                                                       hyperparameters,
+                                                                                       forward_func,
+                                                                                       forward_func_user_data,
+                                                                                       forward_func_user_data_destroy);
+
+  GTask * task = g_task_new (NULL, cancellable, callback, user_data);
+  g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) ggml_model_load_from_istream_data_free);
+  g_task_run_in_thread (task, ggml_model_load_from_istream_async_thread);
+}
+
+/**
  * ggml_model_get:
  * @model: A #GGMLModel
  * @key: A key to look up in the model
@@ -805,6 +1004,107 @@ ggml_hyperparameters_new (const char **ordered_keys, int *ordered_values, size_t
 }
 
 /**
+ * ggml_hyperparameters_from_load_istream:
+ * @istream: (transfer none): A #GInputStream
+ * @cancellable: (transfer none): A #GCancellable
+ * @error: A #GError out variable
+ *
+ * Returns: (transfer full): A #GGMLHyperparameters loaded from @istream or %NULL
+ *          with @error set on failure.
+ */
+GGMLHyperparameters *
+ggml_hyperparameters_load_from_istream (GInputStream *istream,
+                                        GCancellable *cancellable,
+                                        GError **error)
+{
+  int32_t parameter_values[6];
+
+  if (!input_stream_read_exactly (istream, (char *) parameter_values, sizeof (int32_t) * 6, cancellable, error))
+    {
+      return NULL;
+    }
+
+  const char *parameter_keys[] = {
+    "n_vocab",
+    "n_ctx",
+    "n_embd",
+    "n_head",
+    "n_layer",
+    "ftype",
+    NULL
+  };
+
+  return ggml_hyperparameters_new (parameter_keys, parameter_values, 6);
+}
+
+typedef struct _GGMLHyperparametersLoadFromIstreamData
+{
+  GInputStream *istream;
+} GGMLHyperparametersLoadFromIstreamData;
+
+static GGMLHyperparametersLoadFromIstreamData *
+ggml_hyperparameters_load_from_istream_data_new (GInputStream *istream)
+{
+  GGMLHyperparametersLoadFromIstreamData *data = g_new0 (GGMLHyperparametersLoadFromIstreamData, 1);
+  data->istream = g_object_ref (istream);
+
+  return data;
+}
+
+static void
+ggml_hyperparameters_load_from_istream_data_free (GGMLHyperparametersLoadFromIstreamData *data)
+{
+  g_clear_pointer (&data->istream, g_object_unref);
+  g_clear_pointer (&data, g_free);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLHyperparametersLoadFromIstreamData, ggml_hyperparameters_load_from_istream_data_free);
+
+static void
+ggml_hyperparameters_load_from_istream_async_thread (GTask         *task,
+                                                     gpointer       source_object,
+                                                     gpointer       task_data,
+                                                     GCancellable  *cancellable)
+{
+  g_autoptr(GGMLHyperparametersLoadFromIstreamData) data = task_data;
+  GError *error = NULL;
+
+  g_autoptr(GGMLHyperparameters) hyperparameters = ggml_hyperparameters_load_from_istream (data->istream,
+                                                                                           cancellable,
+                                                                                           &error);
+
+  if (hyperparameters == NULL)
+    {
+      g_task_return_error (task, error);
+    }
+
+  g_task_return_pointer (task, g_steal_pointer (&hyperparameters), (GDestroyNotify) ggml_hyperparameters_unref);
+}
+
+GGMLHyperparameters *
+ggml_hyperparameters_load_from_istream_finish (GAsyncResult  *result,
+                                               GError       **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, NULL), NULL);
+  GTask *task = G_TASK (result);
+
+  return g_task_propagate_pointer (task, error);
+}
+
+void
+ggml_hyperparameters_load_from_istream_async (GInputStream *istream,
+                                              GCancellable *cancellable,
+                                              GAsyncReadyCallback callback,
+                                              gpointer user_data)
+{
+  g_autoptr(GGMLHyperparametersLoadFromIstreamData) data = ggml_hyperparameters_load_from_istream_data_new(istream);
+
+  GTask * task = g_task_new (NULL, cancellable, callback, user_data);
+  g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) ggml_hyperparameters_load_from_istream_data_free);
+  g_task_run_in_thread (task, ggml_hyperparameters_load_from_istream_async_thread);
+}
+
+/**
  * ggml_hyperparameters_get_int32:
  * @hyperparameters: A #GGMLHyperparameters
  * @key: The hyperparameter key to retrieve
@@ -881,6 +1181,134 @@ ggml_token_dictionary_new (const char **tokens)
     }
 
   return dictionary;
+}
+
+/**
+ * ggml_token_dictionary_load_from_istream:
+ * @istream: (transfer none): A #GInputStream
+ * @n_vocab: An #int32_t with the expected vocab size
+ * @cancellable: (transfer none): A #GCancellable
+ * @error: A #GError out variable
+ *
+ * Returns: (transfer full): A #GGMLTokenDictionary loaded from @istream or %NULL
+ *          with @error set on failure.
+ */
+GGMLTokenDictionary *
+ggml_token_dictionary_load_from_istream (GInputStream *istream,
+                                         int32_t n_vocab,
+                                         GCancellable *cancellable,
+                                         GError **error)
+{
+  int32_t model_n_vocab_check;
+
+  if (!input_stream_read_exactly (istream, (char *) &model_n_vocab_check, sizeof (int32_t) * 1, cancellable, error))
+    {
+      return FALSE;
+    }
+
+  if (model_n_vocab_check != n_vocab)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Model dictionary n_vocab %d does not match hyperparameters n_vocab %d", model_n_vocab_check, n_vocab);
+      return NULL;
+    }
+
+  g_autoptr (GPtrArray) words = g_ptr_array_new_full (n_vocab + 1, g_free);
+
+  for (size_t i = 0; i < n_vocab; ++i)
+    {
+      uint32_t word_size;
+
+      if (!input_stream_read_exactly (istream, (char *) &word_size, sizeof (uint32_t) * 1, cancellable, error))
+        {
+          return FALSE;
+        }
+
+      g_autofree char *buf = g_new0 (char, word_size + 1);
+
+      if (!input_stream_read_exactly (istream, (char *) buf, sizeof (char) * word_size, cancellable, error))
+        {
+          return FALSE;
+        }
+
+      buf[word_size] = '\0';
+      g_ptr_array_add (words, g_steal_pointer (&buf));
+    }
+
+  g_ptr_array_add (words, NULL);
+
+  /* The strings will be copied into the dictionary and autofree'd from here */
+  return ggml_token_dictionary_new ((const char **) words->pdata);
+}
+
+typedef struct _GGMLTokenDictionaryLoadFromIstreamData
+{
+  GInputStream *istream;
+  int32_t n_vocab;
+} GGMLTokenDictionaryLoadFromIstreamData;
+
+static GGMLTokenDictionaryLoadFromIstreamData *
+ggml_token_dictionary_load_from_istream_data_new (GInputStream *istream, int32_t n_vocab)
+{
+  GGMLTokenDictionaryLoadFromIstreamData *data = g_new0 (GGMLTokenDictionaryLoadFromIstreamData, 1);
+  data->istream = g_object_ref (istream);
+  data->n_vocab = n_vocab;
+
+  return data;
+}
+
+static void
+ggml_token_dictionary_load_from_istream_data_free (GGMLTokenDictionaryLoadFromIstreamData *data)
+{
+  g_clear_pointer (&data->istream, g_object_unref);
+  g_clear_pointer (&data, g_free);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLTokenDictionaryLoadFromIstreamData, ggml_token_dictionary_load_from_istream_data_free);
+
+static void
+ggml_token_dictionary_load_from_istream_async_thread (GTask         *task,
+                                                      gpointer       source_object,
+                                                      gpointer       task_data,
+                                                      GCancellable  *cancellable)
+{
+  g_autoptr(GGMLTokenDictionaryLoadFromIstreamData) data = task_data;
+  GError *error = NULL;
+
+  g_autoptr(GGMLTokenDictionary) token_dictionary = ggml_token_dictionary_load_from_istream (data->istream,
+                                                                                             data->n_vocab,
+                                                                                             cancellable,
+                                                                                             &error);
+
+  if (token_dictionary == NULL)
+    {
+      g_task_return_error (task, error);
+    }
+
+  g_task_return_pointer (task, g_steal_pointer (&token_dictionary), (GDestroyNotify) ggml_token_dictionary_unref);
+}
+
+GGMLTokenDictionary *
+ggml_token_dictionary_load_from_istream_finish (GAsyncResult  *result,
+                                                GError       **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, NULL), NULL);
+  GTask *task = G_TASK (result);
+
+  return g_task_propagate_pointer (task, error);
+}
+
+void
+ggml_token_dictionary_load_from_istream_async (GInputStream *istream,
+                                               int32_t       n_vocab,
+                                               GCancellable *cancellable,
+                                               GAsyncReadyCallback callback,
+                                               gpointer user_data)
+{
+  g_autoptr(GGMLTokenDictionaryLoadFromIstreamData) data = ggml_token_dictionary_load_from_istream_data_new (istream, n_vocab);
+
+  GTask * task = g_task_new (NULL, cancellable, callback, user_data);
+  g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) ggml_token_dictionary_load_from_istream_data_free);
+  g_task_run_in_thread (task, ggml_token_dictionary_load_from_istream_async_thread);
 }
 
 /**
@@ -1592,8 +2020,18 @@ input_stream_read_exactly (GInputStream *istream, char *buffer, size_t read_byte
   return TRUE;
 }
 
-static gboolean
-ggml_language_model_consume_istream_magic (GInputStream *istream, GCancellable *cancellable, GError **error)
+/**
+ * ggml_language_model_consume_istream_magic:
+ * @istream: A #GInputStream
+ * @cancellable: A #GCancellable
+ * @error: A #GError
+ *
+ * Returns: %TRUE if the operation succeeded, %FALSE with @error set on failure.
+ */
+gboolean
+ggml_language_model_consume_istream_magic (GInputStream *istream,
+                                           GCancellable *cancellable,
+                                           GError **error)
 {
   uint32_t magic;
 
@@ -1609,72 +2047,51 @@ ggml_language_model_consume_istream_magic (GInputStream *istream, GCancellable *
   return TRUE;
 }
 
-static GGMLHyperparameters *
-ggml_load_hyperparameters_from_istream (GInputStream *istream, GCancellable *cancellable, GError **error)
+static void
+ggml_language_model_consume_istream_magic_thread (GTask *task,
+                                                  gpointer source_object,
+                                                  gpointer user_data,
+                                                  GCancellable *cancellable)
 {
-  int32_t parameter_values[6];
+  GInputStream *istream = user_data;
+  GError *error = NULL;
 
-  if (!input_stream_read_exactly (istream, (char *) parameter_values, sizeof (int32_t) * 6, cancellable, error))
+  if (!ggml_language_model_consume_istream_magic (istream, cancellable, &error))
     {
-      return NULL;
+      g_task_return_error (task, error);
+      return;
     }
 
-  const char *parameter_keys[] = {
-    "n_vocab",
-    "n_ctx",
-    "n_embd",
-    "n_head",
-    "n_layer",
-    "ftype",
-    NULL
-  };
-
-  return ggml_hyperparameters_new (parameter_keys, parameter_values, 6);
+  g_task_return_boolean (task, TRUE);
 }
 
-static GGMLTokenDictionary *
-ggml_load_token_dictionary_from_istream (GInputStream *stream, GGMLHyperparameters *hyperparameters, GCancellable *cancellable, GError **error)
+gboolean
+ggml_language_model_consume_istream_magic_finish (GAsyncResult  *result,
+                                                  GError      **error)
 {
-  int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
-  int32_t model_n_vocab_check;
+  g_return_val_if_fail (g_task_is_valid (result, NULL), FALSE);
 
-  if (!input_stream_read_exactly (stream, (char *) &model_n_vocab_check, sizeof (int32_t) * 1, cancellable, error))
-    {
-      return FALSE;
-    }
+  GTask *task = G_TASK (result);
 
-  if (model_n_vocab_check != n_vocab)
-    {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Model dictionary n_vocab %d does not match hyperparameters n_vocab %d", model_n_vocab_check, n_vocab);
-      return NULL;
-    }
+  return g_task_propagate_boolean (task, error);
+}
 
-  g_autoptr (GPtrArray) words = g_ptr_array_new_full (n_vocab + 1, g_free);
-
-  for (size_t i = 0; i < n_vocab; ++i)
-    {
-      uint32_t word_size;
-
-      if (!input_stream_read_exactly (stream, (char *) &word_size, sizeof (uint32_t) * 1, cancellable, error))
-        {
-          return FALSE;
-        }
-
-      g_autofree char *buf = g_new0 (char, word_size + 1);
-
-      if (!input_stream_read_exactly (stream, (char *) buf, sizeof (char) * word_size, cancellable, error))
-        {
-          return FALSE;
-        }
-
-      buf[word_size] = '\0';
-      g_ptr_array_add (words, g_steal_pointer (&buf));
-    }
-
-  g_ptr_array_add (words, NULL);
-
-  /* The strings will be copied into the dictionary and autofree'd from here */
-  return ggml_token_dictionary_new ((const char **) words->pdata);
+/**
+ * ggml_language_model_consume_istream_magic_async:
+ * @istream: A #GInputStream
+ * @cancellable: A #GCancellable
+ * @callback: A #GAsyncReadyCallback
+ * @user_data: (closure callback): A gpointer to some data for @callback
+ */
+void
+ggml_language_model_consume_istream_magic_async (GInputStream         *istream,
+                                                 GCancellable         *cancellable,
+                                                 GAsyncReadyCallback   callback,
+                                                 gpointer              user_data)
+{
+  GTask *task = g_task_new (NULL, cancellable, callback, user_data);
+  g_task_set_task_data (task, istream, g_object_unref);
+  g_task_run_in_thread (task, ggml_language_model_consume_istream_magic_thread);
 }
 
 static size_t
@@ -1831,44 +2248,6 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
     }
 
   return TRUE;
-}
-
-static GGMLModel *
-ggml_load_model_from_istream (GInputStream                           *istream,
-                              GGMLModelDescFromHyperparametersFunc    create_model_desc,
-                              gpointer                                create_model_desc_user_data,
-                              GGMLHyperparameters                    *hyperparameters,
-                              GGMLModelForwardFunc                    forward_func,
-                              gpointer                                forward_func_user_data,
-                              GDestroyNotify                          forward_func_user_data_destroy,
-                              char                                 ***out_loaded_keys,
-                              GCancellable                           *cancellable,
-                              GError                                **error)
-{
-  const int32_t n_embd = ggml_hyperparameters_get_int32 (hyperparameters, "n_embd");
-  const int32_t n_layer = ggml_hyperparameters_get_int32 (hyperparameters, "n_layer");
-  const int32_t n_ctx = ggml_hyperparameters_get_int32 (hyperparameters, "n_ctx");
-  const int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
-  const int32_t n_head = ggml_hyperparameters_get_int32 (hyperparameters, "n_head");
-  const int32_t ftype = ggml_hyperparameters_get_int32 (hyperparameters, "ftype");
-
-  size_t memory_size = ggml_estimate_transformer_model_memory (n_vocab, n_embd, n_head, n_layer, n_ctx, ftype);
-  g_autoptr (GGMLContext) context = ggml_context_new (memory_size);
-  g_autoptr (GGMLModelDescNode) model_desc_node = (*create_model_desc) (hyperparameters, create_model_desc_user_data);
-  g_autoptr (GHashTable) flattened_desc = ggml_model_desc_node_flatten (model_desc_node);
-  g_autoptr (GGMLModel) model = ggml_context_new_model_from_flattened_desc (context,
-                                                                            flattened_desc,
-                                                                            forward_func,
-                                                                            forward_func_user_data,
-                                                                            forward_func_user_data_destroy);
-
-  /* Now that we have the model, we can start loading in the weights */
-  if (!ggml_model_load_weights_from_istream (istream, model, out_loaded_keys, cancellable, error))
-    {
-      return FALSE;
-    }
-
-  return g_steal_pointer (&model);
 }
 
 static size_t
@@ -2102,14 +2481,19 @@ ggml_language_model_load_from_istream (GInputStream *istream,
       return NULL;
     }
 
-  g_autoptr(GGMLHyperparameters) hyperparameters = ggml_load_hyperparameters_from_istream (istream, cancellable, error);
+  g_autoptr(GGMLHyperparameters) hyperparameters = ggml_hyperparameters_load_from_istream (istream, cancellable, error);
 
   if (hyperparameters == NULL)
     {
       return NULL;
     }
 
-  g_autoptr(GGMLTokenDictionary) token_dictionary = ggml_load_token_dictionary_from_istream (istream, hyperparameters, cancellable, error);
+  g_autoptr (GGMLModelDescNode) model_desc_node = (*create_model_desc) (hyperparameters, create_model_desc_user_data);
+  int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
+  g_autoptr(GGMLTokenDictionary) token_dictionary = ggml_token_dictionary_load_from_istream (istream,
+                                                                                             n_vocab,
+                                                                                             cancellable,
+                                                                                             error);
 
   if (token_dictionary == NULL)
     {
@@ -2117,9 +2501,8 @@ ggml_language_model_load_from_istream (GInputStream *istream,
     }
 
   g_auto(GStrv) loaded_keys = NULL;
-  g_autoptr(GGMLModel) model = ggml_load_model_from_istream (istream,
-                                                             create_model_desc,
-                                                             create_model_desc_user_data,
+  g_autoptr(GGMLModel) model = ggml_model_load_from_istream (istream,
+                                                             model_desc_node,
                                                              hyperparameters,
                                                              forward_func,
                                                              forward_func_user_data,
@@ -2128,18 +2511,258 @@ ggml_language_model_load_from_istream (GInputStream *istream,
                                                              cancellable,
                                                              error);
 
-  const char *src_weights[] = {"model/wte", NULL};
-  const char *dst_weights[] = {"model/lm_head", NULL};
-  ggml_model_set_possible_tied_weights (model, (const char **) loaded_keys, src_weights, dst_weights);
-
   if (model == NULL)
     {
       return NULL;
     }
 
+  const char *src_weights[] = {"model/wte", NULL};
+  const char *dst_weights[] = {"model/lm_head", NULL};
+  ggml_model_set_possible_tied_weights (model, (const char **) loaded_keys, src_weights, dst_weights);
+
   return ggml_language_model_new (hyperparameters,
                                   token_dictionary,
                                   model);
+}
+
+typedef struct _GGMLLanguageModelLoadFromIstreamData
+{
+  GInputStream *istream;
+  GGMLModelDescFromHyperparametersFunc create_model_desc;
+  gpointer create_model_desc_user_data;
+  GDestroyNotify create_model_desc_user_data_destroy;
+  GGMLModelForwardFunc forward_func;
+  gpointer forward_func_user_data;
+  GDestroyNotify forward_func_user_data_destroy;
+
+  /* Things that get loaded as we go */
+  GGMLModelDescNode *model_desc;
+  GGMLHyperparameters *hyperparameters;
+  GGMLTokenDictionary *token_dictionary;
+  GGMLModel *model;
+} GGMLLanguageModelLoadFromIstreamData;
+
+static GGMLLanguageModelLoadFromIstreamData *
+ggml_language_model_load_from_istream_data_new (GInputStream *istream,
+                                                GGMLModelDescFromHyperparametersFunc create_model_desc,
+                                                gpointer create_model_desc_user_data,
+                                                GDestroyNotify create_model_desc_user_data_destroy,
+                                                GGMLModelForwardFunc forward_func,
+                                                gpointer forward_func_user_data,
+                                                GDestroyNotify forward_func_user_data_destroy)
+{
+  GGMLLanguageModelLoadFromIstreamData *data = g_new0 (GGMLLanguageModelLoadFromIstreamData, 1);
+
+  data->istream = g_object_ref (istream);
+  data->create_model_desc = create_model_desc;
+  data->create_model_desc_user_data = create_model_desc_user_data;
+  data->create_model_desc_user_data_destroy = create_model_desc_user_data_destroy;
+  data->forward_func = forward_func;
+  data->forward_func_user_data = forward_func_user_data;
+  data->forward_func_user_data_destroy = forward_func_user_data_destroy;
+
+  return data;
+}
+
+void
+ggml_language_model_load_from_istream_data_free (GGMLLanguageModelLoadFromIstreamData *data)
+{
+  g_clear_pointer (&data->istream, g_object_unref);
+  g_clear_pointer (&data->create_model_desc_user_data, data->create_model_desc_user_data_destroy);
+  g_clear_pointer (&data->forward_func_user_data, data->forward_func_user_data_destroy);
+
+  g_clear_pointer (&data->model_desc, ggml_model_desc_node_unref);
+  g_clear_pointer (&data->model, ggml_model_unref);
+  g_clear_pointer (&data->hyperparameters, ggml_hyperparameters_unref);
+  g_clear_pointer (&data->token_dictionary, ggml_token_dictionary_unref);
+
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelLoadFromIstreamData, ggml_language_model_load_from_istream_data_free)
+
+static void
+ggml_language_model_load_from_istream_on_model_read (GObject *src,
+                                                     GAsyncResult *result,
+                                                     gpointer user_data)
+{
+  GError *error = NULL;
+  GTask *task = user_data;
+  g_autoptr(GGMLModel) model = NULL;
+  g_auto(GStrv) loaded_keys = NULL;
+
+  if ((model = ggml_model_load_from_istream_finish (result, &loaded_keys, &error)) == NULL)
+    {
+      g_task_return_error (task, error);
+      return;
+    }
+
+  GGMLLanguageModelLoadFromIstreamData *data = g_task_get_task_data (task);
+
+  data->model = g_steal_pointer (&model);
+
+  const char *src_weights[] = {"model/wte", NULL};
+  const char *dst_weights[] = {"model/lm_head", NULL};
+  ggml_model_set_possible_tied_weights (data->model, (const char **) loaded_keys, src_weights, dst_weights);
+
+  g_task_return_pointer (task,
+                         ggml_language_model_new (data->hyperparameters,
+                                                  data->token_dictionary,
+                                                  data->model),
+                         (GDestroyNotify) ggml_language_model_unref);
+}
+
+static void
+ggml_language_model_load_from_istream_on_token_dictionary_read (GObject *src,
+                                                                GAsyncResult *result,
+                                                                gpointer user_data)
+{
+  GError *error = NULL;
+  GTask *task = user_data;
+  g_autoptr(GGMLTokenDictionary) token_dictionary = NULL;
+
+  if ((token_dictionary = ggml_token_dictionary_load_from_istream_finish (result, &error)) == NULL)
+    {
+      g_task_return_error (task, error);
+      return;
+    }
+
+  GGMLLanguageModelLoadFromIstreamData *data = g_task_get_task_data (task);
+
+  data->token_dictionary = g_steal_pointer (&token_dictionary);
+
+  /* Continue reading the stream, now for the model itself.
+   *
+   * After launching this, the model_forwad_func_user_data is transferred
+   * to the subtask, so set to %NULL in the GGMLHyperparametersLoadFromIstreamData
+   */
+  ggml_model_load_from_istream_async (data->istream,
+                                      data->model_desc,
+                                      data->hyperparameters,
+                                      g_steal_pointer (&data->forward_func),
+                                      g_steal_pointer (&data->forward_func_user_data),
+                                      g_steal_pointer (&data->forward_func_user_data_destroy),
+                                      g_task_get_cancellable (task),
+                                      ggml_language_model_load_from_istream_on_model_read,
+                                      task);
+}
+
+static void
+ggml_language_model_load_from_istream_on_hyperparameters_read (GObject *src,
+                                                               GAsyncResult *result,
+                                                               gpointer user_data)
+{
+  GError *error = NULL;
+  GTask *task = user_data;
+  g_autoptr(GGMLHyperparameters) hyperparameters = NULL;
+
+  if ((hyperparameters = ggml_hyperparameters_load_from_istream_finish (result, &error)) == NULL)
+    {
+      g_task_return_error (task, error);
+      return;
+    }
+
+  GGMLLanguageModelLoadFromIstreamData *data = g_task_get_task_data (task);
+
+  /* We can already use the hyperparameters to create the model desc. */
+  data->hyperparameters = g_steal_pointer (&hyperparameters);
+  data->model_desc = (*data->create_model_desc) (data->hyperparameters,
+                                                 data->create_model_desc_user_data);
+
+  /* Continue reading the stream, now for the token dictionary */
+  ggml_token_dictionary_load_from_istream_async (data->istream,
+                                                 ggml_hyperparameters_get_int32 (data->hyperparameters, "n_vocab"),
+                                                 g_task_get_cancellable (task),
+                                                 ggml_language_model_load_from_istream_on_token_dictionary_read,
+                                                 task);
+}
+
+static void
+ggml_language_model_load_from_istream_on_magic_read (GObject *src,
+                                                     GAsyncResult *result,
+                                                     gpointer user_data)
+{
+  GError *error = NULL;
+  GTask *task = user_data;
+
+  if (!ggml_language_model_consume_istream_magic_finish (result, &error))
+    {
+      g_task_return_error (task, error);
+      return;
+    }
+
+  /* Continue reading the istream */
+  GGMLLanguageModelLoadFromIstreamData *data = g_task_get_task_data (task);
+
+  ggml_hyperparameters_load_from_istream_async (data->istream,
+                                                g_task_get_cancellable (task),
+                                                ggml_language_model_load_from_istream_on_hyperparameters_read,
+                                                task);
+}
+
+/**
+ * ggml_language_model_load_from_istream_async:
+ * @istream: (transfer none): A #GInputStream
+ * @create_model_desc: (transfer none) (scope call): A #GGMLModelDescFromHyperparametersFunc to specify the model structure and weights
+ * @create_model_desc_user_data: (closure create_model_desc): A closure for @create_model_desc
+ * @create_model_desc_user_data_destroy: (destroy create_model_desc): A #GDestroyNotify for create_model_desc
+ * @forward_func: (scope notified) (nullable): A #GGMLModelFowardFunc
+ * @forward_func_user_data: (closure forward_func) (transfer full): The user data for @forward_func
+ * @forward_func_user_data_destroy: (destroy forward_func): A #GDestroyNotify for forward_func
+ * @cancellable: (transfer none) (nullable): A #GCancellable
+ * @callback: A #GAsyncReadyCallback to be called when loading is complete.
+ * @user_data: (closure callback): Some user data for @callback
+ *
+ * Asynchronously read a GGML language model from @istream , which includes the hyperparameters, token
+ * dictionary and model weights. The @callback will be called with a #GGMLLanguageModel
+ * or an error on completion.
+ */
+void
+ggml_language_model_load_from_istream_async (GInputStream *istream,
+                                             GGMLModelDescFromHyperparametersFunc create_model_desc,
+                                             gpointer create_model_desc_user_data,
+                                             GDestroyNotify create_model_desc_user_data_destroy,
+                                             GGMLModelForwardFunc forward_func,
+                                             gpointer forward_func_user_data,
+                                             GDestroyNotify forward_func_user_data_destroy,
+                                             GCancellable *cancellable,
+                                             GAsyncReadyCallback callback,
+                                             gpointer user_data)
+{
+  g_autoptr(GGMLLanguageModelLoadFromIstreamData) data = ggml_language_model_load_from_istream_data_new(istream,
+                                                                                                        create_model_desc,
+                                                                                                        create_model_desc_user_data,
+                                                                                                        create_model_desc_user_data_destroy,
+                                                                                                        forward_func,
+                                                                                                        forward_func_user_data,
+                                                                                                        forward_func_user_data_destroy);
+
+  GTask * task = g_task_new (NULL, cancellable, callback, user_data);
+  g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) ggml_language_model_load_from_istream_data_free);
+
+  ggml_language_model_consume_istream_magic_async (istream,
+                                                   cancellable,
+                                                   ggml_language_model_load_from_istream_on_magic_read,
+                                                   task);
+}
+
+/**
+ * ggml_language_model_load_from_istream_finish:
+ * @result: A #GAsyncResult
+ * @error: (nullable): A #GError
+ *
+ * Finish an async read of a #GGMLLanguageModel and return the model.
+ *
+ * Returns: (transfer full): A new #GGMLLanguageModel or %NULL with @error set
+ *          on failure.
+ */
+GGMLLanguageModel *
+ggml_language_model_load_from_istream_finish (GAsyncResult  *result,
+                                              GError       **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, NULL), NULL);
+
+  return g_task_propagate_pointer (G_TASK (result), error);
 }
 
 /**
