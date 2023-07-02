@@ -107,7 +107,7 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
                                       GCancellable *cancellable,
                                       GError **error)
 {
-  g_autoptr(GPtrArray) loaded_keys = g_ptr_array_new (0, g_free);
+  g_autoptr(GPtrArray) loaded_keys = g_ptr_array_new_full (0, g_free);
 
   while (TRUE)
     {
