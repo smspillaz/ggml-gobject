@@ -2386,6 +2386,7 @@ ggml_language_model_forward_loop (GGMLModel           *model,
  * @language_model: A #GGMLLanguageModel
  * @prompt: An input prompt
  * @num_iterations: Number of tokens to generate.
+ * @out_is_complete_eos: (out): An out-variable indicating whether we hit an EOS token.
  * @error: A #GError
  *
  * Returns: (transfer full): The completed prompt, after running the autoregressive
@@ -2395,6 +2396,7 @@ char *
 ggml_language_model_complete (GGMLLanguageModel  *language_model,
                               const char         *prompt,
                               int32_t             num_iterations,
+                              gboolean           *out_is_complete_eos,
                               GError            **error)
 {
   g_autofree int32_t *tokens = NULL;
@@ -2419,6 +2421,8 @@ ggml_language_model_complete (GGMLLanguageModel  *language_model,
       return NULL;
     }
 
+  /* May be used in the future, but for now always %FALSE */
+  *out_is_complete_eos = FALSE;
   return ggml_token_dictionary_decode (language_model->token_dictionary,
                                        completed_tokens,
                                        out_num_tokens);
