@@ -19,7 +19,7 @@ jobs:
 
     steps:
     - name: Install apt dependencies
-      run: sudo apt-get install build-essential python3-pip cmake gobject-introspection-dev libgio2.0-dev ninja-build gjs
+      run: sudo apt-get install build-essential python3-pip cmake gobject-introspection-dev libgio-2.0-dev ninja-build gjs
     - name: Install pip dependencies
       run: sudo pip3 install meson
 
