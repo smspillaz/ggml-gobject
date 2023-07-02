@@ -436,6 +436,37 @@ describe('GGML GPT2', function() {
       ['The meaning of life is: to live in a world of abundance', false]
     );
   });
+  it('can do a forward pass through some data asynchronously', function(done) {
+    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
+    const istream = file.read(null);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2,
+      istream,
+      null
+    );
+
+    let completion_tokens = [];
+
+    let thread = language_model.complete_async(
+      'The meaning of life is:',
+      7,
+      5,
+      null,
+      (src, res) => {
+        const [part, is_complete, is_complete_eos] = language_model.complete_finish(res);
+        completion_tokens.push(part);
+
+        if (is_complete) {
+          expect(completion_tokens.join('')).toEqual(
+            'The meaning of life is: to live in a world of abundance'
+          );
+          done();
+        }
+      }
+    );
+    thread.join();
+  });
   it('can do a forward pass defined in JS through some data', function() {
     const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
     const istream = file.read(null);
