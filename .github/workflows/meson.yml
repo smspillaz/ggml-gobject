@@ -70,7 +70,7 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Fetch header
-      run: cp ../ggml/include/ggml/ggml.h ggml-gobject/ggml-gobject/ggml.h
+      run: cp ../ggml/include/ggml/ggml.h ggml-gobject/ggml.h
 
     - name: Meson Build
       # You may pin to the exact commit or the version.
@@ -84,6 +84,3 @@ jobs:
     - name: Check logs
       if: always()
       run: cat build/meson-logs/testlog.txt
-    - name: Setup tmate session
-      if: always()
-      uses: mxschmitt/action-tmate@v3
