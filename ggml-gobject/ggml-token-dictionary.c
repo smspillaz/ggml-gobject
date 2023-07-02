@@ -258,7 +258,7 @@ ggml_token_dictionary_decode (GGMLTokenDictionary *token_dictionary,
                               size_t               n_tokens)
 {
   size_t token_dictionary_size = g_hash_table_size (token_dictionary->word_to_idx);
-  g_autoptr(GPtrArray) decoded_tokens = g_ptr_array_new_null_terminated (n_tokens, NULL, TRUE);
+  g_autoptr(GPtrArray) decoded_tokens = g_ptr_array_new (n_tokens, NULL);
 
   for (size_t i = 0; i < n_tokens; ++i)
     {
@@ -267,6 +267,8 @@ ggml_token_dictionary_decode (GGMLTokenDictionary *token_dictionary,
       g_ptr_array_add (decoded_tokens, token_dictionary->idx_to_word[tokens[i]]);
     }
 
+  /* Add null-terminator */
+  g_ptr_array_add (decoded_tokens, NULL);
   return g_strjoinv ("", (char **) decoded_tokens->pdata);
 }
 
