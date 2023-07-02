@@ -3446,7 +3446,6 @@ ggml_context_new_from_mem_buffer (GBytes *mem_buffer)
   context->ref_count = 1;
 
   g_assert (context->ctx != NULL);
-
   return context;
 }
 
