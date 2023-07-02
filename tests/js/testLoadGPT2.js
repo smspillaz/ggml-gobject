@@ -30,7 +30,7 @@ function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
     null,
     {
       "model": GGML.ModelDescNode.new(
-      null,
+        null,
         {
           "ln_f/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
           "ln_f/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
