@@ -346,6 +346,19 @@ char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
 char * ggml_language_model_decode_tokens (GGMLLanguageModel *language_model,
                                           int32_t           *tokens,
                                           size_t             length);
+char * ggml_language_model_complete_finish (GGMLLanguageModel  *language_model,
+                                            GAsyncResult       *result,
+                                            gboolean           *out_is_complete,
+                                            gboolean           *out_is_complete_eos,
+                                            GError            **error);
+GThread * ggml_language_model_complete_async (GGMLLanguageModel    *language_model,
+                                         const char           *prompt,
+                                         size_t                num_iterations,
+                                         size_t                chunk_size,
+                                         GCancellable         *cancellable,
+                                         GAsyncReadyCallback   callback,
+                                         gpointer              user_data,
+                                         GDestroyNotify        user_data_destroy);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModel, ggml_language_model_unref)
 

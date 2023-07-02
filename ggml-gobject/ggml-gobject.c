@@ -2446,6 +2446,483 @@ ggml_language_model_complete (GGMLLanguageModel  *language_model,
                                        out_num_tokens);
 }
 
+typedef struct _GGMLLanguageModelChunkCompletionResult
+{
+  char     *chunk;
+  gboolean  is_complete;
+  gboolean  is_complete_eos;
+} GGMLLanguageModelChunkCompletionResult;
+
+typedef struct _GGMLLanguageModelChunkCompletion
+{
+  GGMLLanguageModelChunkCompletionResult *result;
+  GError *error;
+} GGMLLanguageModelChunkCompletion;
+
+/**
+ * ggml_language_model_chunk_completion_result_new:
+ * @chunk: (transfer full): A string with the chunk data
+ * @is_complete: A boolean value indicating whether decoding is complete.
+ * @is_complete_eos: A boolean value indicating whether decoding was complete
+ *                   because we hit an EOS value.
+ *
+ * Returns: (transfer full): A new #GGMLLanguageModelChunkCompletionResult
+ */
+static GGMLLanguageModelChunkCompletionResult *
+ggml_language_model_chunk_completion_result_new (char     *chunk,
+                                                 gboolean  is_complete,
+                                                 gboolean  is_complete_eos)
+{
+  GGMLLanguageModelChunkCompletionResult *result = g_new0 (GGMLLanguageModelChunkCompletionResult, 1);
+  result->chunk = g_steal_pointer (&chunk);
+  result->is_complete = is_complete;
+  result->is_complete_eos = is_complete_eos;
+
+  return result;
+}
+
+static void
+ggml_language_model_chunk_completion_result_free (GGMLLanguageModelChunkCompletionResult *result)
+{
+  g_clear_pointer (&result->chunk, g_free);
+  g_clear_pointer (&result, g_free);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelChunkCompletionResult, ggml_language_model_chunk_completion_result_free)
+
+/**
+ * ggml_language_model_chunk_completion_new:
+ * @result: (transfer full): A #GGMLLanguageModelChunkCompletionResult
+ * @error: (transfer full) (nullable): A GError or %NULL
+ *
+ * Returns: (transfer full): A new #GGMLLanguageModelChunkCompletion
+ */
+static GGMLLanguageModelChunkCompletion *
+ggml_language_model_chunk_completion_new (GGMLLanguageModelChunkCompletionResult  *result,
+                                          GError                                  *error)
+{
+  GGMLLanguageModelChunkCompletion *chunk_completion = g_new0 (GGMLLanguageModelChunkCompletion, 1);
+  chunk_completion->result = g_steal_pointer (&result);
+
+  if (error != NULL)
+    {
+      g_propagate_error (&chunk_completion->error, error);
+    }
+
+  return chunk_completion;
+}
+
+static void
+ggml_language_model_chunk_completion_free (GGMLLanguageModelChunkCompletion *completion)
+{
+  g_clear_pointer (&completion->result, ggml_language_model_chunk_completion_result_free);
+  g_clear_pointer (&completion->error, g_error_free);
+
+  g_clear_pointer (&completion, g_free);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelChunkCompletion, ggml_language_model_chunk_completion_free)
+
+
+/**
+ * ggml_language_model_complete_finish:
+ * @language_model: A #GGMLLanguageModel
+ * @result: A #GAsyncResult
+ * @out_is_complete: (out): An output variable indicating if the number of
+ *                   tokens requested has been generated or the completion has
+ *                   reached an end-of-sentence token.
+ * @out_is_complete_eos: (out): An output variable indicating if the
+ *                              completion has reached an end-of-sentence token.
+ * @error: A #GError
+ *
+ * Complete the call to ggml_language_model_complete_async and return
+ * a pointer to an char * array of a string chunk (of number of tokens chunk_size
+ * given to ggml_language_model_complete_async).
+ *
+ * There are two "complete" states. The first, @out_is_complete, just means
+ * that we've generated at least as much as has been requested, but not necessarily
+ * that the sequence could be further completed (eg, by passing a new prompt with
+ * the same sequence). The second, @out_is_complete_eos means the sequence has
+ * been completed to an end-of-sequence token, so the model had nothing left
+ * to generate for this sequence and finished early.
+ *
+ * Returns: (transfer full): A new string or %NULL with @error set on
+ *          failure.
+ */
+char *
+ggml_language_model_complete_finish (GGMLLanguageModel  *language_model,
+                                     GAsyncResult       *result,
+                                     gboolean           *out_is_complete,
+                                     gboolean           *out_is_complete_eos,
+                                     GError            **error)
+{
+  GTask *task = G_TASK (result);
+  g_autoptr(GGMLLanguageModelChunkCompletionResult) results = g_task_propagate_pointer (task, error);
+
+  if (results == NULL)
+    {
+      return NULL;
+    }
+
+  *out_is_complete = results->is_complete;
+  *out_is_complete_eos = results->is_complete_eos;
+
+  return g_strdup (results->chunk);
+}
+
+typedef struct _GGMLLanguageModelCompleteState
+{
+  GGMLLanguageModel *language_model;
+  char *prompt;
+  GArray *prompt_tokens;
+  size_t iterations;
+  size_t chunk_size;
+  GAsyncQueue *queue;
+} GGMLLanguageModelCompleteState;
+
+static GGMLLanguageModelCompleteState *
+ggml_language_model_complete_state_new (GGMLLanguageModel    *language_model,
+                                        const char           *prompt,
+                                        size_t                iterations,
+                                        size_t                chunk_size,
+                                        GAsyncQueue          *async_queue)
+{
+  GGMLLanguageModelCompleteState *state = g_new0 (GGMLLanguageModelCompleteState, 1);
+  state->language_model = ggml_language_model_ref (language_model);
+  state->prompt = g_strdup (prompt);
+  state->iterations = iterations;
+  state->chunk_size = chunk_size;
+  state->queue = g_async_queue_ref (async_queue);
+
+  return state;
+}
+
+static void
+ggml_language_model_complete_state_free (GGMLLanguageModelCompleteState *state)
+{
+  g_clear_pointer (&state->queue, g_async_queue_unref);
+  g_clear_pointer (&state->prompt, g_free);
+
+  g_clear_pointer (&state, g_free);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelCompleteState, ggml_language_model_complete_state_free)
+
+static void
+ggml_language_model_complete_thread_queue_push (GGMLLanguageModelCompleteState *state,
+                                                GGMLLanguageModelChunkCompletion *completion)
+{
+  /* We assume that this succeeds */
+  g_async_queue_push (state->queue, completion);
+  g_main_context_wakeup (g_main_context_default ());
+}
+
+static void
+ggml_language_model_complete_thread_push_tokens_or_error (GGMLLanguageModelCompleteState *state,
+                                                          char      *chunk,
+                                                          gboolean  is_complete,
+                                                          gboolean  is_complete_eos,
+                                                          GError   *error)
+{
+  if (error != NULL)
+    {
+      g_autoptr(GGMLLanguageModelChunkCompletion) completion = ggml_language_model_chunk_completion_new (
+        NULL,
+        g_steal_pointer (&error)
+      );
+      ggml_language_model_complete_thread_queue_push (state, g_steal_pointer (&completion));
+      return;
+    }
+
+  g_autoptr(GGMLLanguageModelChunkCompletionResult) result = ggml_language_model_chunk_completion_result_new(
+    chunk,
+    is_complete,
+    is_complete_eos
+  );
+  g_autoptr(GGMLLanguageModelChunkCompletion) completion = ggml_language_model_chunk_completion_new (
+    g_steal_pointer (&result),
+    NULL
+  );
+  ggml_language_model_complete_thread_queue_push (state, g_steal_pointer (&completion));
+}
+
+static gpointer
+ggml_language_model_complete_thread_loop (gpointer data)
+{
+  GGMLLanguageModelCompleteState *state = data;
+  g_autofree int32_t *out_prompt_tokens = NULL;
+  size_t   out_n_prompt_tokens = 0;
+  int32_t  n_completed_iterations = 0;
+  g_autoptr(GError) error = NULL;
+
+  if (!ggml_gpt_tokenize (state->language_model->token_dictionary,
+                          state->prompt,
+                          &out_prompt_tokens,
+                          &out_n_prompt_tokens,
+                          &error))
+    {
+      ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                                NULL,
+                                                                FALSE,
+                                                                FALSE,
+                                                                g_steal_pointer (&error));
+      return GINT_TO_POINTER (FALSE);
+    }
+
+  /* Immediately return this chunk back to the caller. They will need to
+   * collect the tokens. */
+  g_autofree char *init_chunk = g_strdup(state->prompt);
+  /* We completed a chunk, send it to the caller. */
+  ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                            g_steal_pointer (&init_chunk),
+                                                            FALSE,
+                                                            FALSE,
+                                                            NULL);
+
+  /* Create a memory buffer for prompt_tokens->len. Because we do subsequent
+   * passes using a single query (saved keys and values), we only need to allocate
+   * this much memory. */
+  g_autoptr(GBytes) mem_buffer = ggml_gpt_model_forward_pass_create_memory_buffer (out_n_prompt_tokens + state->iterations);
+  g_autoptr(GHashTable) inference_parameters = g_hash_table_new_full (g_str_hash, g_str_equal, NULL , NULL);
+
+  g_hash_table_insert (inference_parameters, (gpointer) n_past_key, GINT_TO_POINTER (0));
+
+  /* We first do a single iteration to populate the key/value memories */
+  int32_t current_chunk_index = 0;
+  g_autoptr(GArray) chunk_tokens = g_array_sized_new (FALSE, TRUE, sizeof (int32_t), state->chunk_size);
+  int32_t *chunk_tokens_data = &(g_array_index (chunk_tokens, int32_t, 0));
+
+  /* We allocate enough space upfront and also set the size.
+   * This is used as a ring buffer, so all zeros are fine */
+  chunk_tokens->len = state->chunk_size;
+
+  if (!ggml_language_model_forward_single_iteration (state->language_model->model,
+                                                     state->language_model->hyperparameters,
+                                                     inference_parameters,
+                                                     mem_buffer,
+                                                     out_prompt_tokens,
+                                                     out_n_prompt_tokens,
+                                                     &chunk_tokens_data[current_chunk_index],
+                                                     &error))
+    {
+      ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                                NULL,
+                                                                FALSE,
+                                                                FALSE,
+                                                                g_steal_pointer (&error));
+      return GINT_TO_POINTER (FALSE);
+    }
+
+  ++n_completed_iterations;
+
+  for (; n_completed_iterations < state->iterations; ++n_completed_iterations)
+    {
+      current_chunk_index = n_completed_iterations % state->chunk_size;
+      int32_t read_chunk_index = (current_chunk_index - 1 + state->chunk_size) % state->chunk_size;
+      g_assert (read_chunk_index >= 0);
+
+      g_hash_table_insert (inference_parameters,
+                           (gpointer) n_past_key,
+                           GINT_TO_POINTER (out_n_prompt_tokens + n_completed_iterations - 1));
+
+      if (current_chunk_index == 0)
+        {
+          char *chunk = ggml_token_dictionary_decode (state->language_model->token_dictionary,
+                                                      chunk_tokens_data,
+                                                      chunk_tokens->len);
+          /* We completed a chunk, send it to the caller. */
+          ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                                    g_steal_pointer (&chunk),
+                                                                    FALSE,
+                                                                    FALSE,
+                                                                    NULL);
+        }
+
+      if (!ggml_language_model_forward_single_iteration (state->language_model->model,
+                                                         state->language_model->hyperparameters,
+                                                         inference_parameters,
+                                                         mem_buffer,
+                                                         &chunk_tokens_data[read_chunk_index],
+                                                         1,
+                                                         &chunk_tokens_data[current_chunk_index],
+                                                         &error))
+        {
+          ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                                    NULL,
+                                                                    FALSE,
+                                                                    FALSE,
+                                                                    g_steal_pointer (&error));
+          return GINT_TO_POINTER (FALSE);
+        }
+    }
+
+    g_array_set_size (chunk_tokens, (n_completed_iterations - 1) % state->chunk_size + 1);
+    g_autofree char *chunk = ggml_token_dictionary_decode (state->language_model->token_dictionary,
+                                                           (int32_t *) chunk_tokens->data,
+                                                           chunk_tokens->len);
+
+    /* We completed a chunk, send it to the caller. */
+    ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                              g_steal_pointer (&chunk),
+                                                              TRUE,
+                                                              FALSE,
+                                                              NULL);
+
+  return GINT_TO_POINTER (TRUE);
+}
+
+typedef struct _GGMLLanguageModelCompleteMonitorState
+{
+  GAsyncQueue *queue;
+  GAsyncReadyCallback callback;
+  gpointer user_data;
+  GDestroyNotify user_data_destroy;
+} GGMLLanguageModelCompleteMonitorState;
+
+static GGMLLanguageModelCompleteMonitorState *
+ggml_language_model_complete_monitor_state_new (GAsyncQueue          *async_queue,
+                                                GAsyncReadyCallback   callback,
+                                                gpointer              user_data,
+                                                GDestroyNotify        user_data_destroy)
+{
+  GGMLLanguageModelCompleteMonitorState *state = g_new0 (GGMLLanguageModelCompleteMonitorState, 1);
+  state->callback = callback;
+  state->user_data = user_data;
+  state->user_data_destroy = user_data_destroy;
+  state->queue = g_async_queue_ref (async_queue);
+
+  return state;
+}
+
+static void
+ggml_language_model_complete_monitor_state_free (GGMLLanguageModelCompleteMonitorState *state)
+{
+  g_clear_pointer (&state->queue, g_async_queue_unref);
+  g_clear_pointer (&state->user_data, state->user_data_destroy);
+
+  g_clear_pointer (&state, g_free);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelCompleteMonitorState, ggml_language_model_complete_monitor_state_free)
+
+/**
+ * ggml_language_model_monitor_process_completion: (skip)
+ * @completion: A #GGMLLanguageModelChunkCompletion fragment
+ * @state: A #GGMLLanguageModelCompleteMonitorState
+ *
+ * Processes a partial completion and returns either an error
+ * or a partial completion to the GAsyncReadyCallback.
+ *
+ * Returns: %TRUE if the monitor source should be terminated (eg, the
+ *          thread has reached some end condition) or %FALSE
+ *          if the monitor source should continue.
+ */
+static gboolean
+ggml_language_model_monitor_process_completion (GGMLLanguageModelCompleteMonitorState *state,
+                                                GGMLLanguageModelChunkCompletion      *completion)
+{
+  g_autoptr(GTask) task = g_task_new (NULL, NULL, state->callback, state->user_data);
+
+  if (completion->error != NULL)
+    {
+      GError *error = NULL;
+      g_propagate_error (&error, g_steal_pointer (&completion->error));
+      g_task_return_error (task, error);
+      return TRUE;
+    }
+
+  if (completion->result != NULL)
+    {
+      g_task_return_pointer (task, g_steal_pointer (&completion->result), NULL);
+      return FALSE;
+    }
+
+  /* We're all done, return TRUE because we got a sentinel value */
+  return TRUE;
+}
+
+static gboolean
+ggml_language_model_monitor_callback (gpointer user_data)
+{
+  GGMLLanguageModelCompleteMonitorState *state = user_data;
+
+  while (TRUE)
+    {
+      GGMLLanguageModelChunkCompletion *completion = g_async_queue_try_pop (state->queue);
+
+      /* Nothing more in the queue, but we're not done with our completion,
+       * so return G_SOURCE_CONTINUE here. */
+      if (completion == NULL)
+        {
+          return G_SOURCE_CONTINUE;
+        }
+
+      /* If we return TRUE*/
+      if (ggml_language_model_monitor_process_completion (state, completion))
+        {
+          ggml_language_model_chunk_completion_free (completion);
+          ggml_language_model_complete_monitor_state_free (state);
+          return G_SOURCE_REMOVE;
+        }
+
+      ggml_language_model_chunk_completion_free (completion);
+    }
+}
+
+/**
+ * ggml_language_model_complete_async:
+ * @language_model: (transfer none): A #GGMLLanguageModel
+ * @prompt: (transfer none): An initial prompt to use for the model
+ * @num_iterations: Number of additional tokens to generate
+ * @chunk_size: Chunk size of tokens that get sent to @callback on generation
+ * @cancellable: (transfer none) (nullable): A #GCancellable
+ * @callback: A #GAsyncReadyCallback to send partially completed sequences too
+ * @user_data: (closure callback): Some user data for @callback
+ * @user_data_destroy: (destroy callback): A destroy function for @user_data
+ *
+ * Asynchronously complete a prompt from @language_model by generating @num_iterations tokens.
+ * This function can be used for streaming the result of generation, if @chunk_size < @num_iterations
+ * as @callback will be invoked multiple times. @chunk_size is something that will need to be tuned according
+ * to the needs of the application. A smaller @chunk_size means lower latency but higher overhead and
+ * therefore slower overall generation.
+ *
+ * The @callback should not free its @user_data on
+ * invocation - the generation process will do that once generation is complete. You can complete
+ * a call to this function with ggml_language_model_complete_finish.
+ *
+ * Returns: (transfer full): A new #GThread
+ */
+GThread *
+ggml_language_model_complete_async (GGMLLanguageModel    *language_model,
+                                    const char           *prompt,
+                                    size_t                num_iterations,
+                                    size_t                chunk_size,
+                                    GCancellable         *cancellable,
+                                    GAsyncReadyCallback   callback,
+                                    gpointer              user_data,
+                                    GDestroyNotify        user_data_destroy)
+{
+  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
+  g_autoptr(GError) error = NULL;
+
+  g_autoptr(GAsyncQueue) async_queue = g_async_queue_new_full ((GDestroyNotify) ggml_language_model_chunk_completion_free);
+  g_autoptr(GGMLLanguageModelCompleteMonitorState) monitor_state = ggml_language_model_complete_monitor_state_new (async_queue,
+                                                                                                                   callback,
+                                                                                                                   user_data,
+                                                                                                                   user_data_destroy);
+
+  g_idle_add ((GSourceFunc) ggml_language_model_monitor_callback,
+              g_steal_pointer (&monitor_state));
+
+  GGMLLanguageModelCompleteState *state = ggml_language_model_complete_state_new (language_model,
+                                                                                  prompt,
+                                                                                  num_iterations,
+                                                                                  chunk_size,
+                                                                                  async_queue);
+
+  return g_thread_new ("complete-thread", ggml_language_model_complete_thread_loop, state);
+}
+
 static void
 ggml_model_set_possible_tied_weights (GGMLModel *model,
                                       const char **loaded_keys,
