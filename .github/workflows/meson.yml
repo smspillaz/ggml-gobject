@@ -41,11 +41,11 @@ jobs:
     - name: Build ggml
       uses: threeal/cmake-action@v1.2.0
       with:
-        generator: ninja
+        generator: Ninja
         source-dir: ggml
         build-dir: ggml/build
         run-build: true
-        options: -DCMAKE_INSTALL_PREFIX=/usr
+        options: CMAKE_INSTALL_PREFIX=/usr
 
     - name: Install ggml
       run: cd ggml/build && sudo ninja install
