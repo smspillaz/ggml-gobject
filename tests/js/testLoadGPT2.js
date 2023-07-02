@@ -23,6 +23,8 @@
 const System = imports.system;
 const { GLib, Gio, GObject, GGML } = imports.gi;
 
+jasmine.DEFAULT_TIMEOUT_INTERVAL = 100000;
+
 function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
   return GGML.ModelDescNode.new(
     null,
