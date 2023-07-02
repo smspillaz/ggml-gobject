@@ -45,7 +45,7 @@ jobs:
         source-dir: ggml
         build-dir: ggml/build
         run-build: true
-        options: CMAKE_INSTALL_PREFIX=/usr
+        options: CMAKE_INSTALL_PREFIX=/usr BUILD_SHARED=ON GGML_BUILD_TESTS=OFF GGML_BUILD_EXAMPLES=OFF
 
     - name: Install ggml
       run: cd ggml/build && sudo ninja install
