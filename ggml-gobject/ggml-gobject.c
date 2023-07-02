@@ -801,8 +801,8 @@ ggml_model_load_from_istream_async_thread (GTask         *task,
                                            gpointer       task_data,
                                            GCancellable  *cancellable)
 {
-  g_autoptr(GGMLModelLoadFromIstreamData) data = task_data;
-  g_auto(GStrv) out_loaded_keys;
+  GGMLModelLoadFromIstreamData *data = task_data;
+  g_auto(GStrv) out_loaded_keys = NULL;
   GError *error = NULL;
 
   g_autoptr(GGMLModel) model = ggml_model_load_from_istream (data->istream,
@@ -870,7 +870,7 @@ ggml_model_load_from_istream_async (GInputStream *istream,
                                                                                        forward_func_user_data,
                                                                                        forward_func_user_data_destroy);
 
-  GTask * task = g_task_new (NULL, cancellable, callback, user_data);
+  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
   g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) ggml_model_load_from_istream_data_free);
   g_task_run_in_thread (task, ggml_model_load_from_istream_async_thread);
 }
@@ -1066,7 +1066,7 @@ ggml_hyperparameters_load_from_istream_async_thread (GTask         *task,
                                                      gpointer       task_data,
                                                      GCancellable  *cancellable)
 {
-  g_autoptr(GGMLHyperparametersLoadFromIstreamData) data = task_data;
+  GGMLHyperparametersLoadFromIstreamData *data = task_data;
   GError *error = NULL;
 
   g_autoptr(GGMLHyperparameters) hyperparameters = ggml_hyperparameters_load_from_istream (data->istream,
@@ -1099,7 +1099,7 @@ ggml_hyperparameters_load_from_istream_async (GInputStream *istream,
 {
   g_autoptr(GGMLHyperparametersLoadFromIstreamData) data = ggml_hyperparameters_load_from_istream_data_new(istream);
 
-  GTask * task = g_task_new (NULL, cancellable, callback, user_data);
+  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
   g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) ggml_hyperparameters_load_from_istream_data_free);
   g_task_run_in_thread (task, ggml_hyperparameters_load_from_istream_async_thread);
 }
@@ -1271,7 +1271,7 @@ ggml_token_dictionary_load_from_istream_async_thread (GTask         *task,
                                                       gpointer       task_data,
                                                       GCancellable  *cancellable)
 {
-  g_autoptr(GGMLTokenDictionaryLoadFromIstreamData) data = task_data;
+  GGMLTokenDictionaryLoadFromIstreamData *data = task_data;
   GError *error = NULL;
 
   g_autoptr(GGMLTokenDictionary) token_dictionary = ggml_token_dictionary_load_from_istream (data->istream,
@@ -1306,7 +1306,7 @@ ggml_token_dictionary_load_from_istream_async (GInputStream *istream,
 {
   g_autoptr(GGMLTokenDictionaryLoadFromIstreamData) data = ggml_token_dictionary_load_from_istream_data_new (istream, n_vocab);
 
-  GTask * task = g_task_new (NULL, cancellable, callback, user_data);
+  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
   g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) ggml_token_dictionary_load_from_istream_data_free);
   g_task_run_in_thread (task, ggml_token_dictionary_load_from_istream_async_thread);
 }
@@ -2587,7 +2587,12 @@ ggml_language_model_load_from_istream_on_model_read (GObject *src,
                                                      gpointer user_data)
 {
   GError *error = NULL;
-  GTask *task = user_data;
+
+  /* We take ownership of the task now, because after calling
+   * g_task_return_pointer, the callback will be called in the
+   * main thread through g_task_return_now, and then we can
+   * unref the task here. */
+  g_autoptr(GTask) task = user_data;
   g_autoptr(GGMLModel) model = NULL;
   g_auto(GStrv) loaded_keys = NULL;
 
@@ -2737,13 +2742,15 @@ ggml_language_model_load_from_istream_async (GInputStream *istream,
                                                                                                         forward_func_user_data,
                                                                                                         forward_func_user_data_destroy);
 
-  GTask * task = g_task_new (NULL, cancellable, callback, user_data);
+  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
   g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) ggml_language_model_load_from_istream_data_free);
 
+  /* In this case, ggml_language_model_consume_istream_magic_async owns the parent task
+   * so we steal the pointer from here. */
   ggml_language_model_consume_istream_magic_async (istream,
                                                    cancellable,
                                                    ggml_language_model_load_from_istream_on_magic_read,
-                                                   task);
+                                                   g_steal_pointer (&task));
 }
 
 /**
