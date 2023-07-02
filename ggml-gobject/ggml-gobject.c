@@ -127,10 +127,10 @@ ggml_model_desc_node_new (GGMLModelDescLeaf *leaf, GHashTable *children)
   if (children != NULL)
     {
       node->base.children = copy_hash_table (children,
-                                        (GCopyFunc) g_strdup,
-                                        NULL,
-                                        (GCopyFunc) ggml_model_desc_node_ref,
-                                        NULL);
+                                             (GCopyFunc) g_strdup,
+                                             NULL,
+                                             (GCopyFunc) ggml_model_desc_node_ref,
+                                             NULL);
     }
   else
     {
