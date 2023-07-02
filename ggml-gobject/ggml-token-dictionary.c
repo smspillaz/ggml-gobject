@@ -258,7 +258,7 @@ ggml_token_dictionary_decode (GGMLTokenDictionary *token_dictionary,
                               size_t               n_tokens)
 {
   size_t token_dictionary_size = g_hash_table_size (token_dictionary->word_to_idx);
-  g_autoptr(GPtrArray) decoded_tokens = g_ptr_array_new (n_tokens, NULL);
+  g_autoptr(GPtrArray) decoded_tokens = g_ptr_array_new_full (n_tokens, NULL);
 
   for (size_t i = 0; i < n_tokens; ++i)
     {
