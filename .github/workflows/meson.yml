@@ -18,6 +18,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Install apt dependencies
+      run: sudo apt-get install build-essential python3-pip cmake gobject-introspection-dev libgio2.0-dev ninja-build gjs jasmine-gjs
+    - name: Install pip dependencies
+      run: sudo pip3 install meson
+
+    - name: Clone jasmine-gjs
+      uses: actions/checkout@v3
+      with:
+        path: jasmine-gjs
+        repository: ptomato/jasmine-gjs
+
+    - name: Configure jasmine-gjs
+      run: cd jasmine-gjs && meson build && cd build && ninja && sudo ninja install
+
+    - name: Clone ggml
+      uses: actions/checkout@v3
+      with:
+        path: ggml
+        repository: ggerganov/ggml
+
+    - name: Build ggml
+      uses: actions/cmake-action@v1.2.0
+      with:
+        generator: ninja
+        source-dir: ggml
+        build-dir: ggml/build
+        run-build: true
+        options: -DCMAKE_INSTALL_PREFIX=/usr
+
+    - name: Install ggml
+      run: cd ggml/build && sudo ninja install
+
     - uses: actions/checkout@v3
     - name: Meson Build
       # You may pin to the exact commit or the version.
