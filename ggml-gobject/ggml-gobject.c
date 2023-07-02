@@ -1732,7 +1732,7 @@ GBytes *
 ggml_gpt_model_forward_pass_create_memory_buffer (size_t n_tokens)
 {
   size_t estimated_size = (256 * 1024 * 1024 + (2048000 * n_tokens * 11 * 2 / 10));
-  return g_bytes_new (g_malloc (estimated_size), estimated_size);
+  return g_bytes_new_take (g_malloc (estimated_size), estimated_size);
 }
 
 static GGMLModelDescNode *
@@ -2861,7 +2861,7 @@ ggml_context_new_from_mem_buffer (GBytes *mem_buffer)
 GGMLContext *
 ggml_context_new (size_t memory_size)
 {
-  g_autoptr(GBytes) mem_buffer = g_bytes_new (g_malloc (memory_size), memory_size);
+  g_autoptr(GBytes) mem_buffer = g_bytes_new_take (g_malloc (memory_size), memory_size);
   return ggml_context_new_from_mem_buffer (mem_buffer);
 }
 
