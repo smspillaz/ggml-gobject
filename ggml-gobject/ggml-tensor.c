@@ -316,7 +316,7 @@ ggml_tensor_get_shape (GGMLTensor *tensor, size_t *out_n_dims)
 GPtrArray *
 ggml_tensor_get_cgraph_children (GGMLTensor *tensor)
 {
-  g_autoptr(GPtrArray) children = g_ptr_array_new_null_terminated (2, (GDestroyNotify) ggml_tensor_unref, TRUE);
+  g_autoptr(GPtrArray) children = g_ptr_array_new_full (2, (GDestroyNotify) ggml_tensor_unref);
 
   if (tensor->tensor->src0 != NULL)
     {
