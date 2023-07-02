@@ -58,6 +58,9 @@ jobs:
       if: steps.cache-gpt2.outputs.cache-hit != 'true'
       run: mkdir -p ggml/build && cd ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M
 
+    - name: Check cwd
+      run: pwd
+
     - name: Install ggml
       run: cd ggml/build && sudo ninja install
 
