@@ -1752,20 +1752,20 @@ ggml_create_gpt2_layer_model_desc (int32_t d_model,
 
   int64_t c_attn_w_size[] = { d_model, d_model * 3 };
   g_autoptr(GGMLModelDescNode) attn_c_attn_w_node = ggml_model_desc_node_new_leaf (c_attn_w_size, 2, GGML_DATA_TYPE_F16);
-  g_autoptr(GGMLModelDescNode) attn_c_attn_b_node = ggml_model_desc_node_new_leaf (vector_size, 1, GGML_DATA_TYPE_F32);
+  g_autoptr(GGMLModelDescNode) attn_c_attn_b_node = ggml_model_desc_node_new_leaf (&c_attn_w_size[1], 1, GGML_DATA_TYPE_F32);
 
   int64_t c_proj_w_size[] = { d_model, d_model };
   g_autoptr(GGMLModelDescNode) attn_c_proj_w_node = ggml_model_desc_node_new_leaf (c_proj_w_size, 2, GGML_DATA_TYPE_F16);
-  g_autoptr(GGMLModelDescNode) attn_c_proj_p_node = ggml_model_desc_node_new_leaf (vector_size, 1, GGML_DATA_TYPE_F32);
+  g_autoptr(GGMLModelDescNode) attn_c_proj_p_node = ggml_model_desc_node_new_leaf (&c_proj_w_size[1], 1, GGML_DATA_TYPE_F32);
 
 
   int64_t mlp_c_fc_w_size[] = { d_model, d_ff };
   g_autoptr(GGMLModelDescNode) mlp_c_fc_w = ggml_model_desc_node_new_leaf (mlp_c_fc_w_size, 2, GGML_DATA_TYPE_F16);
-  g_autoptr(GGMLModelDescNode) mlp_c_fc_b = ggml_model_desc_node_new_leaf (vector_size, 1, GGML_DATA_TYPE_F32);
+  g_autoptr(GGMLModelDescNode) mlp_c_fc_b = ggml_model_desc_node_new_leaf (&mlp_c_fc_w_size[1], 1, GGML_DATA_TYPE_F32);
 
   int64_t mlp_c_proj_w_size[] = { d_ff, d_model };
   g_autoptr(GGMLModelDescNode) mlp_c_proj_w = ggml_model_desc_node_new_leaf (mlp_c_proj_w_size, 2, GGML_DATA_TYPE_F16);
-  g_autoptr(GGMLModelDescNode) mlp_c_proj_b = ggml_model_desc_node_new_leaf (vector_size, 1, GGML_DATA_TYPE_F32);
+  g_autoptr(GGMLModelDescNode) mlp_c_proj_b = ggml_model_desc_node_new_leaf (&mlp_c_proj_w_size[1], 1, GGML_DATA_TYPE_F32);
 
   g_hash_table_insert (layer_parameters, g_strdup ("ln_1/g"), g_steal_pointer (&ln_1_g_node));
   g_hash_table_insert (layer_parameters, g_strdup ("ln_1/b"), g_steal_pointer (&ln_1_b_node));
@@ -1815,11 +1815,11 @@ ggml_create_gpt2_model_desc (int32_t n_vocab,
   g_autoptr(GGMLModelDescNode) ln_f_b_node = ggml_model_desc_node_new_leaf (vector_size, 1, GGML_DATA_TYPE_F32);
 
   int64_t wte_size[] = { d_model, n_vocab };
-  g_autoptr(GGMLModelDescNode) wte_node = ggml_model_desc_node_new_leaf (wte_size, 1, GGML_DATA_TYPE_F16);
-  g_autoptr(GGMLModelDescNode) lm_head_node = ggml_model_desc_node_new_leaf (wte_size, 1, GGML_DATA_TYPE_F16);
+  g_autoptr(GGMLModelDescNode) wte_node = ggml_model_desc_node_new_leaf (wte_size, 2, GGML_DATA_TYPE_F16);
+  g_autoptr(GGMLModelDescNode) lm_head_node = ggml_model_desc_node_new_leaf (wte_size, 2, GGML_DATA_TYPE_F16);
 
   int64_t wpe_size[] = { d_model, n_ctx };
-  g_autoptr(GGMLModelDescNode) wpe_node = ggml_model_desc_node_new_leaf (wpe_size, 1, GGML_DATA_TYPE_F16);
+  g_autoptr(GGMLModelDescNode) wpe_node = ggml_model_desc_node_new_leaf (wpe_size, 2, GGML_DATA_TYPE_F32);
 
   g_hash_table_insert (model_parameters, g_strdup ("ln_f/g"), g_steal_pointer (&ln_f_g_node));
   g_hash_table_insert (model_parameters, g_strdup ("ln_f/b"), g_steal_pointer (&ln_f_b_node));
