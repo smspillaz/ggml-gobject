@@ -618,7 +618,7 @@ ggml_tensor_get_cgraph_perf_us (GGMLTensor *tensor)
 }
 
 /**
- * ggml_data_type_size: 
+ * ggml_data_type_size:
  * @data_type: A #GGMLDataType
  *
  * Returns: The size in bytes of this @data_type
