@@ -107,7 +107,7 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
                                       GCancellable *cancellable,
                                       GError **error)
 {
-  g_autoptr(GPtrArray) loaded_keys = g_ptr_array_new_null_terminated (0, g_free, TRUE);
+  g_autoptr(GPtrArray) loaded_keys = g_ptr_array_new_full (0, g_free);
 
   while (TRUE)
     {
@@ -194,6 +194,9 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
 
       g_ptr_array_add (loaded_keys, g_strdup (name_buffer));
     }
+
+  /* Add sentinel */
+  g_ptr_array_add (loaded_keys, NULL);
 
   if (out_loaded_keys != NULL)
     {
