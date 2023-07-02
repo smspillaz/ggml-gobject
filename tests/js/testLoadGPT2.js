@@ -20,6 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+const System = imports.system;
 const { GLib, Gio, GObject, GGML } = imports.gi;
 
 function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
