@@ -428,7 +428,7 @@ describe('GGML GPT2', function() {
     );
 
     expect(language_model.complete('The meaning of life is:', 7)).toEqual(
-      'The meaning of life is: to live in a world of abundance'
+      ['The meaning of life is: to live in a world of abundance', false]
     );
   });
   it('can do a forward pass defined in JS through some data', function() {
@@ -449,7 +449,7 @@ describe('GGML GPT2', function() {
     );
 
     expect(language_model.complete('The meaning of life is:', 7)).toEqual(
-      'The meaning of life is: to live in a world of abundance'
+      ['The meaning of life is: to live in a world of abundance', false]
     );
   });
 })
