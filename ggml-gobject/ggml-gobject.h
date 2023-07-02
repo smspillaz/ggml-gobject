@@ -325,6 +325,10 @@ char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
                                      int32_t             num_iterations,
                                      GError            **error);
 
+char * ggml_language_model_decode_tokens (GGMLLanguageModel *language_model,
+                                          int32_t           *tokens,
+                                          size_t             length);
+
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModel, ggml_language_model_unref)
 
 typedef struct _GGMLContext GGMLContext;

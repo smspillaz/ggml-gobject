@@ -2382,6 +2382,24 @@ ggml_language_model_forward_loop (GGMLModel           *model,
 }
 
 /**
+ * ggml_language_model_decode_tokens:
+ * @language_model: A #GGMLLanguageModel
+ * @tokens: (array length=length): An #int32_t array of tokens
+ * @length: The length of @tokens
+ *
+ * Returns: (transfer full): The decoded tokens
+ */
+char *
+ggml_language_model_decode_tokens (GGMLLanguageModel *language_model,
+                                   int32_t           *tokens,
+                                   size_t             length)
+{
+  return ggml_token_dictionary_decode (language_model->token_dictionary,
+                                       tokens,
+                                       length);
+}
+
+/**
  * ggml_language_model_complete:
  * @language_model: A #GGMLLanguageModel
  * @prompt: An input prompt
