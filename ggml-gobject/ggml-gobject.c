@@ -2333,7 +2333,7 @@ ggml_language_model_forward_loop (GGMLModel           *model,
   /* Create a memory buffer for prompt_tokens->len. Because we do subsequent
    * passes using a single query (saved keys and values), we only need to allocate
    * this much memory. */
-  g_autoptr(GBytes) mem_buffer = ggml_gpt_model_forward_pass_create_memory_buffer (prompt_tokens->len);
+  g_autoptr(GBytes) mem_buffer = ggml_gpt_model_forward_pass_create_memory_buffer (n_initial_prompt_tokens + num_iterations);
 
   /* We first do a single iteration to populate the key/value memories */
   int32_t argmax;
