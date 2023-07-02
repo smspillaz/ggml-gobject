@@ -1841,8 +1841,8 @@ ggml_create_gpt2_model_desc (int32_t n_vocab,
                                                                    g_str_equal,
                                                                    g_free,
                                                                    (GDestroyNotify) ggml_model_desc_node_unref);
-  g_hash_table_insert (memory_parameters, g_strdup("k"), memory_k_node);
-  g_hash_table_insert (memory_parameters, g_strdup("v"), memory_v_node);
+  g_hash_table_insert (memory_parameters, g_strdup("k"), g_steal_pointer (&memory_k_node));
+  g_hash_table_insert (memory_parameters, g_strdup("v"), g_steal_pointer (&memory_v_node));
 
   g_autoptr(GGMLModelDescNode) memory_node = ggml_model_desc_node_new (NULL, memory_parameters);
   g_autoptr(GGMLModelDescNode) model_node = ggml_model_desc_node_new (NULL, model_parameters);
