@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-gobject.c
+ * ggml-gobject/ggml-stream-internal.h
  *
- * Library code for ggml-gobject
+ * Library code for ggml-stream-internal
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -20,3 +20,15 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <glib-object.h>
+#include <gio/gio.h>
+
+G_BEGIN_DECLS
+
+gboolean ggml_input_stream_read_exactly (GInputStream  *istream,
+                                         char          *buffer,
+                                         size_t         read_bytes,
+                                         GCancellable  *cancellable,
+                                         GError       **error);
+
+G_END_DECLS

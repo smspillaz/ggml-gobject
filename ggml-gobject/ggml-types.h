@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-gobject.h
+ * ggml-gobject/ggml-types.h
  *
- * Header file for ggml-gobject
+ * Header file for ggml-types
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -22,18 +22,26 @@
 
 #pragma once
 
-#include <ggml-gobject/ggml-compute-graph.h>
-#include <ggml-gobject/ggml-context.h>
-#include <ggml-gobject/ggml-gpt.h>
-#include <ggml-gobject/ggml-hyperparameters.h>
-#include <ggml-gobject/ggml-language-model.h>
-#include <ggml-gobject/ggml-model-desc.h>
-#include <ggml-gobject/ggml-model.h>
-#include <ggml-gobject/ggml-ops.h>
-#include <ggml-gobject/ggml-tensor.h>
-#include <ggml-gobject/ggml-token-dictionary.h>
-#include <ggml-gobject/ggml-types.h>
+#include <ggml.h>
+#include <glib-object.h>
 
 G_BEGIN_DECLS
+
+typedef enum
+{
+  GGML_DATA_TYPE_F32 = GGML_TYPE_F32,
+  GGML_DATA_TYPE_F16 = GGML_TYPE_F16,
+  GGML_DATA_TYPE_Q4_0 = GGML_TYPE_Q4_0,
+  GGML_DATA_TYPE_Q4_1 = GGML_TYPE_Q4_1,
+  GGML_DATA_TYPE_Q5_0 = GGML_TYPE_Q5_0,
+  GGML_DATA_TYPE_Q5_1 = GGML_TYPE_Q5_1,
+  GGML_DATA_TYPE_Q8_0 = GGML_TYPE_Q8_0,
+  GGML_DATA_TYPE_Q8_1 = GGML_TYPE_Q8_1,
+  GGML_DATA_TYPE_I8 = GGML_TYPE_I8,
+  GGML_DATA_TYPE_I16 = GGML_TYPE_I16,
+  GGML_DATA_TYPE_I32 = GGML_TYPE_I32,
+} GGMLDataType;
+
+size_t ggml_size_of_data_type (GGMLDataType data_type);
 
 G_END_DECLS

@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-gobject.c
+ * ggml-gobject/ggml-types.c
  *
- * Library code for ggml-gobject
+ * Library code for ggml-types
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -20,3 +20,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <ggml-types.h>
+
+/**
+ * ggml_size_of_data_type:
+ * @data_type: A #GGMLDataType
+ *
+ * Returns: The size in bytes of this @data_type
+ */
+size_t
+ggml_size_of_data_type (GGMLDataType data_type)
+{
+  return ggml_type_size ((enum ggml_type) data_type);
+}

@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-gobject.h
+ * ggml-gobject/ggml-context-internal.h
  *
- * Header file for ggml-gobject
+ * Library code for ggml-context-internal
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -15,25 +15,22 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU Lesser General Public License
- * along with ggml-gobject; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * You should have received a copy of the GNU Lesser General Public License along
+ * with ggml-gobject; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#pragma once
-
-#include <ggml-gobject/ggml-compute-graph.h>
+#include <glib-object.h>
 #include <ggml-gobject/ggml-context.h>
-#include <ggml-gobject/ggml-gpt.h>
-#include <ggml-gobject/ggml-hyperparameters.h>
-#include <ggml-gobject/ggml-language-model.h>
-#include <ggml-gobject/ggml-model-desc.h>
-#include <ggml-gobject/ggml-model.h>
-#include <ggml-gobject/ggml-ops.h>
-#include <ggml-gobject/ggml-tensor.h>
-#include <ggml-gobject/ggml-token-dictionary.h>
 #include <ggml-gobject/ggml-types.h>
+#include <ggml.h>
 
 G_BEGIN_DECLS
+
+struct _GGMLContext {
+  GBytes *mem_buffer;
+  struct ggml_context *ctx;
+  size_t ref_count;
+};
 
 G_END_DECLS

@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-gobject.h
+ * ggml-gobject/ggml-compute-graph.h
  *
- * Header file for ggml-gobject
+ * Header file for ggml-compute-graph
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -22,18 +22,23 @@
 
 #pragma once
 
-#include <ggml-gobject/ggml-compute-graph.h>
+#include <glib-object.h>
 #include <ggml-gobject/ggml-context.h>
-#include <ggml-gobject/ggml-gpt.h>
-#include <ggml-gobject/ggml-hyperparameters.h>
-#include <ggml-gobject/ggml-language-model.h>
-#include <ggml-gobject/ggml-model-desc.h>
-#include <ggml-gobject/ggml-model.h>
-#include <ggml-gobject/ggml-ops.h>
 #include <ggml-gobject/ggml-tensor.h>
-#include <ggml-gobject/ggml-token-dictionary.h>
-#include <ggml-gobject/ggml-types.h>
 
 G_BEGIN_DECLS
+
+typedef struct _GGMLComputeGraph GGMLComputeGraph;
+
+#define GGML_TYPE_COMPUTE_GRAPH ggml_compute_graph_get_type ()
+GType ggml_compute_graph_get_type (void);
+
+GGMLComputeGraph * ggml_compute_graph_new (size_t n_threads);
+GGMLComputeGraph * ggml_compute_graph_ref (GGMLComputeGraph *compute_graph);
+void ggml_compute_graph_unref (GGMLComputeGraph *compute_graph);
+void ggml_compute_graph_build_forward_expand (GGMLComputeGraph *compute_graph, GGMLTensor *tensor);
+void ggml_compute_graph_compute (GGMLComputeGraph *compute_graph, GGMLContext *context);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLComputeGraph, ggml_compute_graph_unref);
 
 G_END_DECLS
