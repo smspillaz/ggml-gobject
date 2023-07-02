@@ -676,6 +676,257 @@ ggml_model_new_from_flattened_desc (GGMLContext *context,
   return model;
 }
 
+static inline int32_t product_i32 (int32_t *array, size_t n)
+{
+  int32_t product = 1;
+  for (size_t i = 0; i < n; ++i)
+    {
+      product *= array[i];
+    }
+
+  return product;
+}
+
+#define GGML_LANGUAGE_MODEL_MAGIC 0x67676d6c
+
+static gboolean
+input_stream_read_exactly (GInputStream *istream, char *buffer, size_t read_bytes, GCancellable *cancellable, GError **error)
+{
+  size_t bytes_read;
+
+  if (!g_input_stream_read_all (istream, buffer, read_bytes, &bytes_read, cancellable, error))
+    {
+      return FALSE;
+    }
+
+  if (bytes_read != read_bytes)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Expected to read %zu bytes but only read %zu bytes, truncated file?", read_bytes, bytes_read);
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
+/**
+ * ggml_language_model_consume_istream_magic:
+ * @istream: A #GInputStream
+ * @cancellable: A #GCancellable
+ * @error: A #GError
+ *
+ * Returns: %TRUE if the operation succeeded, %FALSE with @error set on failure.
+ */
+gboolean
+ggml_language_model_consume_istream_magic (GInputStream *istream,
+                                           GCancellable *cancellable,
+                                           GError **error)
+{
+  uint32_t magic;
+
+  if (!input_stream_read_exactly (istream, (char *) &magic, sizeof (uint32_t), cancellable, error))
+    return FALSE;
+
+  if (magic != GGML_LANGUAGE_MODEL_MAGIC)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Invalid magic %#010x expected %#010x", magic, GGML_LANGUAGE_MODEL_MAGIC);
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
+static void
+ggml_language_model_consume_istream_magic_thread (GTask *task,
+                                                  gpointer source_object,
+                                                  gpointer user_data,
+                                                  GCancellable *cancellable)
+{
+  GInputStream *istream = user_data;
+  GError *error = NULL;
+
+  if (!ggml_language_model_consume_istream_magic (istream, cancellable, &error))
+    {
+      g_task_return_error (task, error);
+      return;
+    }
+
+  g_task_return_boolean (task, TRUE);
+}
+
+gboolean
+ggml_language_model_consume_istream_magic_finish (GAsyncResult  *result,
+                                                  GError      **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, NULL), FALSE);
+
+  GTask *task = G_TASK (result);
+
+  return g_task_propagate_boolean (task, error);
+}
+
+/**
+ * ggml_language_model_consume_istream_magic_async:
+ * @istream: A #GInputStream
+ * @cancellable: A #GCancellable
+ * @callback: A #GAsyncReadyCallback
+ * @user_data: (closure callback): A gpointer to some data for @callback
+ */
+void
+ggml_language_model_consume_istream_magic_async (GInputStream         *istream,
+                                                 GCancellable         *cancellable,
+                                                 GAsyncReadyCallback   callback,
+                                                 gpointer              user_data)
+{
+  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
+  g_task_set_task_data (task, g_object_ref (istream), g_object_unref);
+  g_task_run_in_thread (task, ggml_language_model_consume_istream_magic_thread);
+}
+
+static gboolean
+ggml_model_load_weights_from_istream (GInputStream *istream,
+                                      GGMLModel *model,
+                                      char ***out_loaded_keys,
+                                      GCancellable *cancellable,
+                                      GError **error)
+{
+  g_autoptr(GPtrArray) loaded_keys = g_ptr_array_new_null_terminated (0, g_free, TRUE);
+
+  while (TRUE)
+    {
+      size_t bytes_read = 0;
+      int32_t n_dims = 0;
+      int32_t name_length = 0;
+      int32_t ttype = 0;
+
+      g_assert (n_dims <= 2);
+
+      if (!g_input_stream_read_all (istream, (char *) &n_dims, sizeof (int32_t) * 1, &bytes_read, cancellable, error))
+        {
+          return FALSE;
+        }
+
+      /* As an exemption, if we don't read anything here, we're at the end of the stream, eg, we're done
+       * and break out of this loop */
+      if (bytes_read == 0)
+        {
+          break;
+        }
+
+      if (!input_stream_read_exactly (istream, (char *) &name_length, sizeof (int32_t) * 1, cancellable, error))
+        {
+          return FALSE;
+        }
+
+      if (!input_stream_read_exactly (istream, (char *) &ttype, sizeof (int32_t) * 1, cancellable, error))
+        {
+          return FALSE;
+        }
+
+      int dims_buffer[2];
+
+      if (!input_stream_read_exactly (istream, (char *) dims_buffer, sizeof (int32_t) * n_dims, cancellable, error))
+        {
+          return FALSE;
+        }
+
+      int32_t input_stream_tensor_n_elements = product_i32(dims_buffer, n_dims);
+      g_autofree char *name_buffer = g_new0 (char, name_length + 1);
+
+      if (!input_stream_read_exactly (istream, (char *) name_buffer, sizeof (char) * name_length, cancellable, error))
+        {
+          return FALSE;
+        }
+
+      name_buffer[name_length] = '\0';
+
+      /* Lookup tensor in the model weights. If its not there, then we have an error. */
+      GGMLTensor *tensor = ggml_model_get (model, name_buffer);
+
+      if (tensor == NULL)
+        {
+          g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Tensor %s not found in model definition", name_buffer);
+          return FALSE;
+        }
+
+      /* We did find the tensor, lets check that the size matches */
+      size_t tensor_definition_n_elements = ggml_tensor_n_elements (tensor);
+
+      if (tensor_definition_n_elements != input_stream_tensor_n_elements)
+        {
+          g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Tensor %s had %zu elements in its definition, but the input stream has %d elements", name_buffer, tensor_definition_n_elements, input_stream_tensor_n_elements);
+          return FALSE;
+        }
+
+      size_t bytes_per_element = ggml_data_type_size (ttype);
+      size_t allocated_bytes = 0;
+      char *tensor_data_ptr = ggml_tensor_get_data (tensor, &allocated_bytes);
+
+      size_t expected_bytes = (tensor_definition_n_elements * bytes_per_element / ggml_tensor_block_size (tensor));
+      if (expected_bytes != allocated_bytes)
+        {
+          g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Tensor %s has allocation of %zu bytes, expected %zu bytes", name_buffer, allocated_bytes, expected_bytes);
+          return FALSE;
+        }
+
+      /* Now we can read the tensor */
+      if (!input_stream_read_exactly (istream, tensor_data_ptr, allocated_bytes, cancellable, error))
+        {
+          return FALSE;
+        }
+
+      g_ptr_array_add (loaded_keys, g_strdup (name_buffer));
+    }
+
+  if (out_loaded_keys != NULL)
+    {
+      *out_loaded_keys = (char **) g_ptr_array_steal (loaded_keys, NULL);
+    }
+
+  return TRUE;
+}
+
+static size_t
+ggml_estimate_transformer_model_memory (int32_t n_vocab, int32_t n_embd, int32_t n_head, int32_t n_layer, int32_t n_ctx, int32_t ftype)
+{
+  const int32_t head_dim = n_embd / n_head;
+  const int32_t kv_heads = n_head;
+  const int32_t kv_dim = kv_heads * head_dim;
+  enum ggml_type wtype = ggml_ftype_to_ggml_type((enum ggml_ftype) (ftype));
+  size_t ctx_size = 0;
+
+  ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // ln_f_g
+  ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // ln_f_b
+
+  ctx_size += n_vocab * n_embd * ggml_type_sizef(wtype);         // wte
+  ctx_size +=   n_ctx * n_embd * ggml_type_sizef(GGML_TYPE_F32); // wpe
+  ctx_size += n_vocab * n_embd * ggml_type_sizef(wtype);         // lm_head
+
+  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_1_g
+  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_1_b
+
+  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_2_g
+  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_2_b
+
+  ctx_size += n_layer * ((n_embd + 2 * kv_dim) * n_embd * 3 * ggml_type_sizef(wtype));         // c_attn_attn_w // TODO:
+  ctx_size += n_layer * (       (n_embd + 2 * kv_dim) * 3 * ggml_type_sizef(GGML_TYPE_F32)); // c_attn_attn_b
+
+  ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(wtype));           // c_attn_proj_w
+  ctx_size += n_layer * (       n_embd * ggml_type_sizef(GGML_TYPE_F32));   // c_attn_proj_b
+
+  ctx_size += n_layer * (4 * n_embd * n_embd * ggml_type_sizef(wtype));         // c_mlp_fc_w
+  ctx_size += n_layer * (       4 * n_embd * ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_fc_b
+
+  ctx_size += n_layer * (4 * n_embd *n_embd * ggml_type_sizef(wtype));         // c_mlp_proj_w
+  ctx_size += n_layer * (         n_embd * ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_proj_b
+
+  ctx_size += n_ctx*n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_k
+  ctx_size += n_ctx*n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_v
+
+  ctx_size += (6 + 12 * n_layer) * 512; // object overhead
+
+  return ctx_size;
+}
+
 /**
  * ggml_model_load_from_istream:
  * @istream: (transfer none): A #GInputStream
@@ -1997,257 +2248,6 @@ ggml_language_model_new (GGMLHyperparameters *hyperparameters, GGMLTokenDictiona
   language_model->ref_count = 1;
 
   return language_model;
-}
-
-#define GGML_LANGUAGE_MODEL_MAGIC 0x67676d6c
-
-static gboolean
-input_stream_read_exactly (GInputStream *istream, char *buffer, size_t read_bytes, GCancellable *cancellable, GError **error)
-{
-  size_t bytes_read;
-
-  if (!g_input_stream_read_all (istream, buffer, read_bytes, &bytes_read, cancellable, error))
-    {
-      return FALSE;
-    }
-
-  if (bytes_read != read_bytes)
-    {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Expected to read %zu bytes but only read %zu bytes, truncated file?", read_bytes, bytes_read);
-      return FALSE;
-    }
-
-  return TRUE;
-}
-
-/**
- * ggml_language_model_consume_istream_magic:
- * @istream: A #GInputStream
- * @cancellable: A #GCancellable
- * @error: A #GError
- *
- * Returns: %TRUE if the operation succeeded, %FALSE with @error set on failure.
- */
-gboolean
-ggml_language_model_consume_istream_magic (GInputStream *istream,
-                                           GCancellable *cancellable,
-                                           GError **error)
-{
-  uint32_t magic;
-
-  if (!input_stream_read_exactly (istream, (char *) &magic, sizeof (uint32_t), cancellable, error))
-    return FALSE;
-
-  if (magic != GGML_LANGUAGE_MODEL_MAGIC)
-    {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Invalid magic %#010x expected %#010x", magic, GGML_LANGUAGE_MODEL_MAGIC);
-      return FALSE;
-    }
-
-  return TRUE;
-}
-
-static void
-ggml_language_model_consume_istream_magic_thread (GTask *task,
-                                                  gpointer source_object,
-                                                  gpointer user_data,
-                                                  GCancellable *cancellable)
-{
-  GInputStream *istream = user_data;
-  GError *error = NULL;
-
-  if (!ggml_language_model_consume_istream_magic (istream, cancellable, &error))
-    {
-      g_task_return_error (task, error);
-      return;
-    }
-
-  g_task_return_boolean (task, TRUE);
-}
-
-gboolean
-ggml_language_model_consume_istream_magic_finish (GAsyncResult  *result,
-                                                  GError      **error)
-{
-  g_return_val_if_fail (g_task_is_valid (result, NULL), FALSE);
-
-  GTask *task = G_TASK (result);
-
-  return g_task_propagate_boolean (task, error);
-}
-
-/**
- * ggml_language_model_consume_istream_magic_async:
- * @istream: A #GInputStream
- * @cancellable: A #GCancellable
- * @callback: A #GAsyncReadyCallback
- * @user_data: (closure callback): A gpointer to some data for @callback
- */
-void
-ggml_language_model_consume_istream_magic_async (GInputStream         *istream,
-                                                 GCancellable         *cancellable,
-                                                 GAsyncReadyCallback   callback,
-                                                 gpointer              user_data)
-{
-  GTask *task = g_task_new (NULL, cancellable, callback, user_data);
-  g_task_set_task_data (task, istream, g_object_unref);
-  g_task_run_in_thread (task, ggml_language_model_consume_istream_magic_thread);
-}
-
-static size_t
-ggml_estimate_transformer_model_memory (int32_t n_vocab, int32_t n_embd, int32_t n_head, int32_t n_layer, int32_t n_ctx, int32_t ftype)
-{
-  const int32_t head_dim = n_embd / n_head;
-  const int32_t kv_heads = n_head;
-  const int32_t kv_dim = kv_heads * head_dim;
-  enum ggml_type wtype = ggml_ftype_to_ggml_type((enum ggml_ftype) (ftype));
-  size_t ctx_size = 0;
-
-  ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // ln_f_g
-  ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // ln_f_b
-
-  ctx_size += n_vocab * n_embd * ggml_type_sizef(wtype);         // wte
-  ctx_size +=   n_ctx * n_embd * ggml_type_sizef(GGML_TYPE_F32); // wpe
-  ctx_size += n_vocab * n_embd * ggml_type_sizef(wtype);         // lm_head
-
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_1_g
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_1_b
-
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_2_g
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_2_b
-
-  ctx_size += n_layer * ((n_embd + 2 * kv_dim) * n_embd * 3 * ggml_type_sizef(wtype));         // c_attn_attn_w // TODO:
-  ctx_size += n_layer * (       (n_embd + 2 * kv_dim) * 3 * ggml_type_sizef(GGML_TYPE_F32)); // c_attn_attn_b
-
-  ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(wtype));           // c_attn_proj_w
-  ctx_size += n_layer * (       n_embd * ggml_type_sizef(GGML_TYPE_F32));   // c_attn_proj_b
-
-  ctx_size += n_layer * (4 * n_embd * n_embd * ggml_type_sizef(wtype));         // c_mlp_fc_w
-  ctx_size += n_layer * (       4 * n_embd * ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_fc_b
-
-  ctx_size += n_layer * (4 * n_embd *n_embd * ggml_type_sizef(wtype));         // c_mlp_proj_w
-  ctx_size += n_layer * (         n_embd * ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_proj_b
-
-  ctx_size += n_ctx*n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_k
-  ctx_size += n_ctx*n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_v
-
-  ctx_size += (6 + 12 * n_layer) * 512; // object overhead
-
-  return ctx_size;
-}
-
-static inline int32_t product_i32 (int32_t *array, size_t n)
-{
-  int32_t product = 1;
-  for (size_t i = 0; i < n; ++i)
-    {
-      product *= array[i];
-    }
-
-  return product;
-}
-
-static gboolean
-ggml_model_load_weights_from_istream (GInputStream *istream,
-                                      GGMLModel *model,
-                                      char ***out_loaded_keys,
-                                      GCancellable *cancellable,
-                                      GError **error)
-{
-  g_autoptr(GPtrArray) loaded_keys = g_ptr_array_new_null_terminated (0, g_free, TRUE);
-
-  while (TRUE)
-    {
-      size_t bytes_read = 0;
-      int32_t n_dims = 0;
-      int32_t name_length = 0;
-      int32_t ttype = 0;
-
-      g_assert (n_dims <= 2);
-
-      if (!g_input_stream_read_all (istream, (char *) &n_dims, sizeof (int32_t) * 1, &bytes_read, cancellable, error))
-        {
-          return FALSE;
-        }
-
-      /* As an exemption, if we don't read anything here, we're at the end of the stream, eg, we're done
-       * and break out of this loop */
-      if (bytes_read == 0)
-        {
-          break;
-        }
-
-      if (!input_stream_read_exactly (istream, (char *) &name_length, sizeof (int32_t) * 1, cancellable, error))
-        {
-          return FALSE;
-        }
-
-      if (!input_stream_read_exactly (istream, (char *) &ttype, sizeof (int32_t) * 1, cancellable, error))
-        {
-          return FALSE;
-        }
-
-      int dims_buffer[2];
-
-      if (!input_stream_read_exactly (istream, (char *) dims_buffer, sizeof (int32_t) * n_dims, cancellable, error))
-        {
-          return FALSE;
-        }
-
-      int32_t input_stream_tensor_n_elements = product_i32(dims_buffer, n_dims);
-      g_autofree char *name_buffer = g_new0 (char, name_length + 1);
-
-      if (!input_stream_read_exactly (istream, (char *) name_buffer, sizeof (char) * name_length, cancellable, error))
-        {
-          return FALSE;
-        }
-
-      name_buffer[name_length] = '\0';
-
-      /* Lookup tensor in the model weights. If its not there, then we have an error. */
-      GGMLTensor *tensor = ggml_model_get (model, name_buffer);
-
-      if (tensor == NULL)
-        {
-          g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Tensor %s not found in model definition", name_buffer);
-          return FALSE;
-        }
-
-      /* We did find the tensor, lets check that the size matches */
-      size_t tensor_definition_n_elements = ggml_tensor_n_elements (tensor);
-
-      if (tensor_definition_n_elements != input_stream_tensor_n_elements)
-        {
-          g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Tensor %s had %zu elements in its definition, but the input stream has %d elements", name_buffer, tensor_definition_n_elements, input_stream_tensor_n_elements);
-          return FALSE;
-        }
-
-      size_t bytes_per_element = ggml_data_type_size (ttype);
-      size_t allocated_bytes = 0;
-      char *tensor_data_ptr = ggml_tensor_get_data (tensor, &allocated_bytes);
-
-      size_t expected_bytes = (tensor_definition_n_elements * bytes_per_element / ggml_tensor_block_size (tensor));
-      if (expected_bytes != allocated_bytes)
-        {
-          g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Tensor %s has allocation of %zu bytes, expected %zu bytes", name_buffer, allocated_bytes, expected_bytes);
-          return FALSE;
-        }
-
-      /* Now we can read the tensor */
-      if (!input_stream_read_exactly (istream, tensor_data_ptr, allocated_bytes, cancellable, error))
-        {
-          return FALSE;
-        }
-
-      g_ptr_array_add (loaded_keys, g_strdup (name_buffer));
-    }
-
-  if (out_loaded_keys != NULL)
-    {
-      *out_loaded_keys = (char **) g_ptr_array_steal (loaded_keys, NULL);
-    }
-
-  return TRUE;
 }
 
 static size_t
