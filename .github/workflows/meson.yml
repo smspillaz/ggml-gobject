@@ -44,10 +44,6 @@ jobs:
       with:
         path: ggml
         repository: ggerganov/ggml
-    
-    - name: Fetch GPT2
-      if: steps.cache-gpt2.outputs.cache-hit != 'true'
-      run: mkdir ggml/build && cd ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M
 
     - name: Build ggml
       uses: threeal/cmake-action@v1.2.0
@@ -57,6 +53,10 @@ jobs:
         build-dir: ggml/build
         run-build: true
         options: CMAKE_INSTALL_PREFIX=/usr BUILD_SHARED_LIBS=ON GGML_BUILD_TESTS=OFF GGML_BUILD_EXAMPLES=OFF
+
+    - name: Fetch GPT2
+      if: steps.cache-gpt2.outputs.cache-hit != 'true'
+      run: mkdir ggml/build && cd ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M
 
     - name: Install ggml
       run: cd ggml/build && sudo ninja install
