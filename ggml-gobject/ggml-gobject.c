@@ -2547,6 +2547,58 @@ ggml_language_model_load_from_istream (GInputStream *istream,
                                   model);
 }
 
+static GGMLModelDescNode *
+ggml_create_gpt2_model_desc_from_hyperparameters (GGMLHyperparameters *hyperparameters)
+{
+  return ggml_create_gpt2_model_desc (ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab"),
+                                      ggml_hyperparameters_get_int32 (hyperparameters, "n_embd"),
+                                      ggml_hyperparameters_get_int32 (hyperparameters, "n_embd") * 4,
+                                      ggml_hyperparameters_get_int32 (hyperparameters, "n_layer"),
+                                      ggml_hyperparameters_get_int32 (hyperparameters, "n_ctx"));
+}
+
+static struct GGMLLanguageModelDefinitions {
+  GGMLModelDescFromHyperparametersFunc model_desc_from_hyperparameters_func;
+  GGMLModelForwardFunc forward_func;
+} ggml_language_model_definitions[] = {
+  /* GGML_DEFINED_MODEL_GPT2 */
+  {
+    .model_desc_from_hyperparameters_func = (GGMLModelDescFromHyperparametersFunc) ggml_create_gpt2_model_desc_from_hyperparameters,
+    .forward_func = ggml_gpt_model_forward_pass
+  }
+};
+
+/**
+ * ggml_language_model_load_defined_from_istream:
+ * @model: A #GGMLDefinedLanguageModel configuration to load
+ * @istream: (transfer none): A #GInputStream
+ * @cancellable: (transfer none): A #GCancellable
+ * @error: A #GError
+ *
+ * Load a GGMLLanguageModel according to some preset given by @model. This
+ * is more language binding friendly, because it doesn't require calling
+ * back into the bindings for finalize the model configuration, though it is
+ * a litle more inflexible.
+ *
+ * Returns: (transfer full): A #GGMLLanguageModel on success or %NULL with
+ *          @error set on failure
+ */
+GGMLLanguageModel *
+ggml_language_model_load_defined_from_istream (GGMLDefinedLanguageModel    model,
+                                               GInputStream               *istream,
+                                               GCancellable               *cancellable,
+                                               GError                    **error)
+{
+  return ggml_language_model_load_from_istream (istream,
+                                                ggml_language_model_definitions[model].model_desc_from_hyperparameters_func,
+                                                NULL,
+                                                ggml_language_model_definitions[model].forward_func,
+                                                NULL,
+                                                NULL,
+                                                cancellable,
+                                                error);
+}
+
 typedef struct _GGMLLanguageModelLoadFromIstreamData
 {
   GInputStream *istream;
@@ -2792,6 +2844,59 @@ ggml_language_model_load_from_istream_finish (GAsyncResult  *result,
   g_return_val_if_fail (g_task_is_valid (result, NULL), NULL);
 
   return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+/**
+ * ggml_language_model_load_defined_from_istream_finish:
+ * @result: A #GAsyncResult
+ * @error: (nullable): A #GError
+ *
+ * Finish an async read of a #GGMLLanguageModel and return the model.
+ *
+ * Returns: (transfer full): A new #GGMLLanguageModel or %NULL with @error set
+ *          on failure.
+ */
+GGMLLanguageModel *
+ggml_language_model_load_defined_from_istream_finish (GAsyncResult  *result,
+                                                      GError       **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, NULL), NULL);
+
+  return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+/**
+ * ggml_language_model_load_defined_from_istream_async:
+ * @model: A #GGMLDefinedLanguageModel configuration to load
+ * @istream: (transfer none): A #GInputStream
+ * @cancellable: (transfer none) (nullable): A #GCancellable
+ * @callback: A #GAsyncReadyCallback to be called when loading is complete.
+ * @user_data: (closure callback): Some user data for @callback
+ *
+ * Asynchronously read a GGML language model from @istream , which includes the hyperparameters, token
+ * dictionary and model weights. This is more language binding friendly because it does
+ * not require calling back into the bindings to finalize model loading, but it is also more
+ * inflexible because it is limited to a set of hardcoded models. The @callback will be called with a #GGMLLanguageModel
+ * or an error on completion.
+ */
+void
+ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageModel   model,
+                                                     GInputStream              *istream,
+                                                     GCancellable              *cancellable,
+                                                     GAsyncReadyCallback        callback,
+                                                     gpointer                   user_data,
+                                                     GError                   **error)
+{
+  ggml_language_model_load_from_istream_async (istream,
+                                               ggml_language_model_definitions[model].model_desc_from_hyperparameters_func,
+                                               NULL,
+                                               NULL,
+                                               ggml_language_model_definitions[model].forward_func,
+                                               NULL,
+                                               NULL,
+                                               cancellable,
+                                               callback,
+                                               user_data);
 }
 
 /**

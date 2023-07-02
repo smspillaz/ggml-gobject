@@ -298,6 +298,10 @@ void ggml_language_model_consume_istream_magic_async (GInputStream         *istr
                                                       GAsyncReadyCallback   callback,
                                                       gpointer              user_data);
 
+typedef enum {
+  GGML_DEFINED_LANGUAGE_MODEL_GPT2
+} GGMLDefinedLanguageModel;
+
 GGMLLanguageModel *ggml_language_model_load_from_istream (GInputStream *istream,
                                                           GGMLModelDescFromHyperparametersFunc create_model_desc,
                                                           gpointer create_model_desc_user_data,
@@ -319,6 +323,19 @@ void ggml_language_model_load_from_istream_async (GInputStream *istream,
                                                   gpointer user_data);
 GGMLLanguageModel * ggml_language_model_load_from_istream_finish (GAsyncResult  *result,
                                                                   GError       **error);
+
+GGMLLanguageModel *ggml_language_model_load_defined_from_istream (GGMLDefinedLanguageModel   model,
+                                                                  GInputStream              *istream,
+                                                                  GCancellable              *cancellable,
+                                                                  GError                   **error);
+void ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageModel   model,
+                                                          GInputStream              *istream,
+                                                          GCancellable              *cancellable,
+                                                          GAsyncReadyCallback        callback,
+                                                          gpointer                   user_data,
+                                                          GError                   **error);
+GGMLLanguageModel *ggml_language_model_load_defined_from_istream_finish (GAsyncResult  *result,
+                                                                         GError       **error);
 
 char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
                                      const char         *prompt,
