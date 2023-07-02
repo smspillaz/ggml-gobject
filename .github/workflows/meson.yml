@@ -33,17 +33,20 @@ jobs:
     - name: Clone jasmine-gjs
       uses: actions/checkout@v3
       with:
-        path: ../jasmine-gjs
+        path: jasmine-gjs
         repository: ptomato/jasmine-gjs
 
     - name: Configure jasmine-gjs
-      run: cd ../jasmine-gjs && meson build && cd build && ninja && sudo ninja install
+      run: mv jasmine-gjs ../jasmine-gjs && cd ../jasmine-gjs && meson build && cd build && ninja && sudo ninja install
 
     - name: Clone ggml
       uses: actions/checkout@v3
       with:
-        path: ../ggml
+        path: ggml
         repository: ggerganov/ggml
+
+    - name: Move ggml to parent
+      run: mv ggml ../ggml
 
     - name: Build ggml
       uses: threeal/cmake-action@v1.2.0
