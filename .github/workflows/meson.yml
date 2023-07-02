@@ -61,4 +61,5 @@ jobs:
         # The directory to build the project to
         directory: build # default is build
     - name: Check logs
+      if: always()
       run: cat build/meson-logs/testlog.txt
