@@ -408,6 +408,20 @@ describe('GGML GPT2', function() {
       }
     );
   });
+  it('can load the GPT2 weights from a bin file asynchronously (defined)', function(done) {
+    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
+    const istream = file.read(null);
+
+    GGML.LanguageModel.load_defined_from_istream_async(
+      GGML.DefinedLanguageModel.GPT2,
+      istream,
+      null,
+      (src, res) => {
+        GGML.LanguageModel.load_defined_from_istream_finish (res);
+        done();
+      }
+    );
+  });
   it('can do a forward pass through some data', function() {
     const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
     const istream = file.read(null);
