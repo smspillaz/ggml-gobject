@@ -57,6 +57,6 @@ jobs:
       uses: BSFishy/meson-build@v1.0.3
       with:
         # The action to run
-        action: build
+        action: test
         # The directory to build the project to
         directory: build # default is build
