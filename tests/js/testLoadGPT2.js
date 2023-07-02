@@ -315,6 +315,9 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
 };
 
 describe('GGML GPT2', function() {
+  afterEach(() => {
+    System.gc();
+  })
   it('can tokenize a simple string', function() {
     const token_dictionary = GGML.TokenDictionary.new([
       "ab",
