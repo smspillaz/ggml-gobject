@@ -323,6 +323,7 @@ GGMLLanguageModel * ggml_language_model_load_from_istream_finish (GAsyncResult  
 char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
                                      const char         *prompt,
                                      int32_t             num_iterations,
+                                     gboolean           *out_is_complete_eos,
                                      GError            **error);
 
 char * ggml_language_model_decode_tokens (GGMLLanguageModel *language_model,
