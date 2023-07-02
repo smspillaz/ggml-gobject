@@ -426,18 +426,9 @@ describe('GGML GPT2', function() {
     const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
     const istream = file.read(null);
 
-    const language_model = GGML.LanguageModel.load_from_istream(
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2,
       istream,
-      (hyperparameters) => createModelDescGPT2(
-        hyperparameters.get_int32('n_vocab'),
-        hyperparameters.get_int32('n_embd'),
-        hyperparameters.get_int32('n_embd') * 4,
-        hyperparameters.get_int32('n_layer'),
-        hyperparameters.get_int32('n_ctx')
-      ),
-      // Bug in gjs - the "user_data" parameter is marked "skip" but it is
-      // still in the function signature, so we have to curry here.
-      (...args) => GGML.gpt_model_forward_pass(...args, null),
       null
     );
 
