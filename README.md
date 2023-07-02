@@ -1,5 +1,7 @@
 # ggml-gobject
 
+[![Meson](https://github.com/smspillaz/ggml-gobject/actions/workflows/meson.yml/badge.svg)](https://github.com/smspillaz/ggml-gobject/actions/workflows/meson.yml)
+
 A GObject binding for [GGML](https://github.com/ggerganov/ggml).
 
 A simple "hello world" example works, eg, loading the GPT2 model weights
