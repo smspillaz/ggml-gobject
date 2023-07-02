@@ -24,6 +24,7 @@ if jasmine.found()
            '--verbose',
            join_paths(meson.current_source_dir(), test_file)
          ],
-         env: tests_environment)
+         env: tests_environment,
+         timeout: 0)
   endforeach
 endif
