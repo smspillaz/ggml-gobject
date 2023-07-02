@@ -480,7 +480,11 @@ describe('GGML GPT2', function() {
         hyperparameters.get_int32('n_layer'),
         hyperparameters.get_int32('n_ctx')
       ),
-      gpt2ForwardPass,
+      (...args) => {
+        System.gc();
+
+        return gpt2ForwardPass(...args);
+      },
       null
     );
 
