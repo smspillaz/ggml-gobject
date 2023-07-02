@@ -1,0 +1,87 @@
+name: Meson
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
+    # You can convert this to a matrix build if you need cross-platform coverage.
+    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install apt dependencies
+      run: sudo apt-get install build-essential python3-pip cmake gobject-introspection libglib2.0-dev ninja-build gjs libgirepository1.0-dev
+    - name: Install pip dependencies
+      run: sudo pip3 install meson
+
+    - name: Cache GPT2
+      id: cache-gpt2
+      uses: actions/cache@v3
+      with:
+        path: ../ggml/build/models/gpt-2-117M/ggml-model.bin
+        key: ${{ runner.os }}-ggml-gpt2-117M
+
+    - name: Clone jasmine-gjs
+      uses: actions/checkout@v3
+      with:
+        path: jasmine-gjs
+        repository: ptomato/jasmine-gjs
+
+    - name: Configure jasmine-gjs
+      run: mv jasmine-gjs ../jasmine-gjs && cd ../jasmine-gjs && meson build && cd build && ninja && sudo ninja install
+
+    - name: Clone ggml
+      uses: actions/checkout@v3
+      with:
+        path: ggml
+        repository: ggerganov/ggml
+        ref: 965568dcd722462466afc1a729be55fb884ab64c
+
+    - name: Move ggml to parent
+      run: mv ggml ../ggml
+
+    - name: Build ggml
+      uses: threeal/cmake-action@v1.2.0
+      with:
+        generator: Ninja
+        source-dir: ../ggml
+        build-dir: ../ggml/build
+        run-build: true
+        options: CMAKE_INSTALL_PREFIX=/usr BUILD_SHARED_LIBS=ON GGML_BUILD_TESTS=OFF GGML_BUILD_EXAMPLES=OFF
+
+    - name: Fetch GPT2
+      if: steps.cache-gpt2.outputs.cache-hit != 'true'
+      run: mkdir -p ../ggml/build && cd ../ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M
+
+    - name: Check cwd
+      run: pwd
+
+    - name: Install ggml
+      run: cd ../ggml/build && sudo ninja install
+
+    - uses: actions/checkout@v3
+
+    - name: Fetch header
+      run: cp ../ggml/include/ggml/ggml.h ggml-gobject/ggml.h
+
+    - name: Meson Build
+      # You may pin to the exact commit or the version.
+      # uses: BSFishy/meson-build@656b2a360964b249ac82905a52018921e01d875b
+      uses: BSFishy/meson-build@v1.0.3
+      with:
+        # The action to run
+        action: test
+        # The directory to build the project to
+        directory: build # default is build
+    - name: Check logs
+      if: always()
+      run: cat build/meson-logs/testlog.txt
