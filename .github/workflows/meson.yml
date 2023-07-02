@@ -39,7 +39,7 @@ jobs:
         repository: ggerganov/ggml
 
     - name: Build ggml
-      uses: actions/cmake-action@v1.2.0
+      uses: threeal/cmake-action@v1.2.0
       with:
         generator: ninja
         source-dir: ggml
