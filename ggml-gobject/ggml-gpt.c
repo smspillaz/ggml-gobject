@@ -67,8 +67,8 @@ ggml_gpt_tokenize (GGMLTokenDictionary *token_dictionary,
   g_autoptr(GPtrArray) words_ptr_array = NULL;
 
   regex = g_regex_new (GPT_SPLIT_REGEX,
-                       G_REGEX_DEFAULT,
-                       G_REGEX_MATCH_DEFAULT,
+                       0,
+                       0,
                        error);
 
   if (regex == NULL)
