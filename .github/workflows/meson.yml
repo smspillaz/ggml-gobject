@@ -80,3 +80,6 @@ jobs:
     - name: Check logs
       if: always()
       run: cat build/meson-logs/testlog.txt
+    - name: Setup tmate session
+      if: always()
+      uses: mxschmitt/action-tmate@v3
