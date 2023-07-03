@@ -21,3 +21,7 @@ See [here](tests/js/testLoadGPT2.js) for an example of using the bound API from 
 # Example
 
 [See a video of an example app here](https://sspilsbury-com-images.s3.amazonaws.com/llm_writer_recording.mov)
+
+You can run the example app like:
+
+    GI_TYPELIB_PATH=/usr/local/lib64/girepository-1.0:$GI_TYPELIB_PATH LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/lib:$LD_LIBRARY_PATH /usr/local/bin/org.ggml-gobject.LLMWriter.Application 
