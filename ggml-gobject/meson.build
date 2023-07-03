@@ -38,6 +38,7 @@ ggml_gobject_toplevel_internal_sources = files([
   'internal/ggml-stream-internal.c',
 ])
 ggml_gobject_toplevel_internal_headers = files([
+  'internal/ggml-context-internal.h',
   'internal/ggml-stream-internal.h',
   'internal/ggml-tensor-internal.h',
 ])
