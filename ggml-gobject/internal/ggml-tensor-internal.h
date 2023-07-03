@@ -20,10 +20,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <ggml/ggml.h>
 #include <glib-object.h>
 #include <ggml-gobject/ggml-context.h>
 #include <ggml-gobject/ggml-types.h>
-#include <ggml.h>
 
 G_BEGIN_DECLS
 

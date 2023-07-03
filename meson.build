@@ -24,14 +24,11 @@ project('ggml-gobject', ['c'],
         meson_version: '>= 0.55.0')
 
 compiler = meson.get_compiler('c')
-ggml_dep = compiler.find_library(
-    'ggml',
-    required: true
-)
 m_dep = compiler.find_library('m', required : true)
 glib = dependency('glib-2.0')
 gio = dependency('gio-2.0')
 gobject = dependency('gobject-2.0')
+ggml = dependency('ggml')
 
 ggml_gobject_inc = include_directories('.')
 
