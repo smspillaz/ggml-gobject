@@ -3,9 +3,6 @@ gnome = import('gnome')
 api_version = '0'
 ggml_gobject_headers_subdir = 'ggml-gobject'
 
-ggml_gobject_toplevel_headers = files([
-  'ggml.h',
-])
 ggml_gobject_toplevel_introspectable_headers = files([
   'ggml-compute-graph.h',
   'ggml-context.h',
@@ -55,7 +52,7 @@ ggml_gobject_lib = shared_library(
   soversion: api_version,
   install: true,
   include_directories: [ ggml_gobject_inc ],
-  dependencies: [ glib, gobject, gio, ggml_dep, m_dep ]
+  dependencies: [ glib, gobject, gio, ggml, m_dep ]
 )
 
 introspection_sources = [
@@ -76,5 +73,5 @@ ggml_gobject_gir = gnome.generate_gir(
   sources: introspection_sources,
   symbol_prefix: 'ggml',
   fatal_warnings: true,
-  dependencies: [ ggml_dep ]
+  dependencies: [ ggml ]
 )[0]
