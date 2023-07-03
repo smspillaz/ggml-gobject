@@ -1,6 +1,6 @@
-# /meson.build
+# /examples/llm-writer-app/data/meson.build
 #
-# Toplevel meson build file for ggml-gobject.
+# Meson build file for ggml-gobject llm-writer-app data.
 #
 # Copyright (C) 2023 Sam Spilsbury
 #
@@ -18,23 +18,11 @@
 # with ggml-gobject; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-project('ggml-gobject', ['c'],
-        version: '0.0.0',
-        license: 'LGPL2+',
-        meson_version: '>= 0.55.0')
 
-compiler = meson.get_compiler('c')
-ggml_dep = compiler.find_library(
-    'ggml',
-    required: true
+gnome.compile_resources(
+  'org.ggml-gobject.LLMWriter.Application.data',
+  'org.ggml-gobject.LLMWriter.Application.data.gresource.xml',
+  gresource_bundle: true,
+  install: true,
+  install_dir: pkgdatadir
 )
-m_dep = compiler.find_library('m', required : true)
-glib = dependency('glib-2.0')
-gio = dependency('gio-2.0')
-gobject = dependency('gobject-2.0')
-
-ggml_gobject_inc = include_directories('.')
-
-subdir('ggml-gobject')
-subdir('tests')
-subdir('examples')
