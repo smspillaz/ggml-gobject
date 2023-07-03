@@ -17,3 +17,7 @@ See [here](tests/js/testLoadGPT2.js) for an example of using the bound API from 
     mkdir build
     meson build
     cd build; ninja; ninja test
+
+# Example
+
+[See a video of an example app here](https://sspilsbury-com-images.s3.amazonaws.com/llm_writer_recording.mov)
