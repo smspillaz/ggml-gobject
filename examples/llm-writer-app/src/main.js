@@ -90,8 +90,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
             buffer.insert_at_cursor(part, part.length);
             System.gc();
           }
-
-        )
+        );
       }
     });
   }
