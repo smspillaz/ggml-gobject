@@ -1,6 +1,6 @@
-# /meson.build
+# /examples/meson.build
 #
-# Toplevel meson build file for ggml-gobject.
+# Examples meson build file for ggml-gobject.
 #
 # Copyright (C) 2023 Sam Spilsbury
 #
@@ -18,23 +18,5 @@
 # with ggml-gobject; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-project('ggml-gobject', ['c'],
-        version: '0.0.0',
-        license: 'LGPL2+',
-        meson_version: '>= 0.55.0')
 
-compiler = meson.get_compiler('c')
-ggml_dep = compiler.find_library(
-    'ggml',
-    required: true
-)
-m_dep = compiler.find_library('m', required : true)
-glib = dependency('glib-2.0')
-gio = dependency('gio-2.0')
-gobject = dependency('gobject-2.0')
-
-ggml_gobject_inc = include_directories('.')
-
-subdir('ggml-gobject')
-subdir('tests')
-subdir('examples')
+subdir('llm-writer-app')
