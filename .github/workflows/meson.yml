@@ -44,7 +44,7 @@ jobs:
       with:
         path: ggml
         repository: ggerganov/ggml
-        ref: 965568dcd722462466afc1a729be55fb884ab64c
+        ref: da3015e52487d8fdb1a05de0879cdc3fc8976bc2
 
     - name: Move ggml to parent
       run: mv ggml ../ggml
