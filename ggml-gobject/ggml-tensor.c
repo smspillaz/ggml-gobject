@@ -318,26 +318,18 @@ ggml_tensor_get_cgraph_children (GGMLTensor *tensor)
 {
   g_autoptr(GPtrArray) children = g_ptr_array_new_full (2, (GDestroyNotify) ggml_tensor_unref);
 
-  if (tensor->tensor->src0 != NULL)
+  for (size_t i = 0; i < GGML_MAX_SRC; ++i)
     {
-      /* XXX: This isn't strictly speaking correct -
-       * tensor->owning_context->ctx might be different
-       * from tensor->src0's context, meaning that if
-       * the context is unref'd then tensor->src0's memory
-       * goes away. */
-      g_ptr_array_add (children,
-                       ggml_tensor_from_tensor (tensor->owning_context, tensor->tensor->src0));
-    }
-
-if (tensor->tensor->src1 != NULL)
-    {
-      /* XXX: This isn't strictly speaking correct -
-       * tensor->owning_context->ctx might be different
-       * from tensor->src0's context, meaning that if
-       * the context is unref'd then tensor->src0's memory
-       * goes away. */
-      g_ptr_array_add (children,
-                       ggml_tensor_from_tensor (tensor->owning_context, tensor->tensor->src1));
+      if (tensor->tensor->src[i] != NULL)
+        {
+          /* XXX: This isn't strictly speaking correct -
+          * tensor->owning_context->ctx might be different
+          * from tensor->src's context, meaning that if
+          * the context is unref'd then tensor->src's memory
+          * goes away. */
+          g_ptr_array_add (children,
+                           ggml_tensor_from_tensor (tensor->owning_context, tensor->tensor->src[i]));
+        }
     }
 
   return g_steal_pointer (&children);
