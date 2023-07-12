@@ -33,11 +33,11 @@ typedef struct _GGMLComputeGraph GGMLComputeGraph;
 #define GGML_TYPE_COMPUTE_GRAPH ggml_compute_graph_get_type ()
 GType ggml_compute_graph_get_type (void);
 
-GGMLComputeGraph * ggml_compute_graph_new (size_t n_threads);
+GGMLComputeGraph * ggml_compute_graph_new (void);
 GGMLComputeGraph * ggml_compute_graph_ref (GGMLComputeGraph *compute_graph);
 void ggml_compute_graph_unref (GGMLComputeGraph *compute_graph);
 void ggml_compute_graph_build_forward_expand (GGMLComputeGraph *compute_graph, GGMLTensor *tensor);
-void ggml_compute_graph_compute (GGMLComputeGraph *compute_graph, GGMLContext *context);
+void ggml_compute_graph_compute (GGMLComputeGraph *compute_graph, GGMLContext *context, int32_t n_threads);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLComputeGraph, ggml_compute_graph_unref);
 

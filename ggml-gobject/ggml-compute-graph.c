@@ -31,15 +31,13 @@ struct _GGMLComputeGraph {
 
 /**
  * ggml_compute_graph_new:
- * @n_threads: Number of threads to use for computation.
  *
  * Returns: (transfer full): A new #GGMLComputeGraph
  */
 GGMLComputeGraph *
-ggml_compute_graph_new (size_t n_threads)
+ggml_compute_graph_new (void)
 {
   GGMLComputeGraph *compute_graph = g_new0 (GGMLComputeGraph, 1);
-  compute_graph->cgraph.n_threads = n_threads;
   compute_graph->ref_count = 1;
 
   return compute_graph;
@@ -94,6 +92,8 @@ ggml_compute_graph_build_forward_expand (GGMLComputeGraph *compute_graph, GGMLTe
  * ggml_compute_graph_compute:
  * @compute_graph: A #GGMLComputeGraph
  * @context: A #GGMLContext used for the computation itself
+ * @n_threads: Number of threads to use for computation. -1 means to use
+ *             the number of CPUs on this machine.
  *
  * Runs the computation over the compute graph, starting from the input
  * tensors in the computation all the way to the output. After running this,
@@ -102,9 +102,10 @@ ggml_compute_graph_build_forward_expand (GGMLComputeGraph *compute_graph, GGMLTe
  */
 void
 ggml_compute_graph_compute (GGMLComputeGraph *compute_graph,
-                            GGMLContext *context)
+                            GGMLContext *context,
+                            int32_t      n_threads)
 {
-  ggml_graph_compute (context->ctx, &compute_graph->cgraph);
+  ggml_graph_compute_with_ctx (context->ctx, &compute_graph->cgraph, n_threads);
 }
 
 G_DEFINE_BOXED_TYPE (GGMLComputeGraph,
