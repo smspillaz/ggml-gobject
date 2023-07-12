@@ -524,7 +524,7 @@ ggml_model_forward (GGMLModel *model,
                     GBytes   *mem_buffer,
                     GError **error)
 {
-  g_autoptr(GGMLComputeGraph) compute_graph = ggml_compute_graph_new (2);
+  g_autoptr(GGMLComputeGraph) compute_graph = ggml_compute_graph_new ();
   g_autoptr(GGMLTensor) output = (*model->forward_func) (model,
                                                          hyperparameters,
                                                          inputs,
@@ -540,7 +540,7 @@ ggml_model_forward (GGMLModel *model,
     }
 
   ggml_compute_graph_build_forward_expand (compute_graph, output);
-  ggml_compute_graph_compute (compute_graph, output->owning_context);
+  ggml_compute_graph_compute (compute_graph, output->owning_context, 2);
 
   return g_steal_pointer (&output);
 }
