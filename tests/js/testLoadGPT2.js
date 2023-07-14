@@ -495,14 +495,25 @@ describe('GGML GPT2', function() {
 
     let completion_tokens = [];
 
+    let callbackTimes = 0;
     let cancellable = new Gio.Cancellable({});
+    /* We immediately cancel to avoid a race condition where
+     * we get the first part back without cancellation */
     let thread = language_model.complete_async(
       'The meaning of life is:',
       7,
       5,
       cancellable,
       (src, res) => {
-        expect(() => language_model.complete_finish(res)).toThrow();
+        /* We get back the prompt on the first callback, the second one is cancelled */
+        if (callbackTimes++ == 0)
+          {
+            expect(language_model.complete_finish(res)).toEqual(['The meaning of life is:', false, false])
+          }
+        else if (callbackTimes++ == 1)
+          {
+            expect(() => language_model.complete_finish(res)).toThrow();
+          }
         done();
       }
     );

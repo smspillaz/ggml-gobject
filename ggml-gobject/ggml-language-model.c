@@ -670,6 +670,7 @@ typedef struct _GGMLLanguageModelCompleteMonitorState
   GAsyncReadyCallback callback;
   gpointer user_data;
   GDestroyNotify user_data_destroy;
+  size_t ref_count;
 } GGMLLanguageModelCompleteMonitorState;
 
 static GGMLLanguageModelCompleteMonitorState *
@@ -683,20 +684,44 @@ ggml_language_model_complete_monitor_state_new (GAsyncQueue          *async_queu
   state->user_data = user_data;
   state->user_data_destroy = user_data_destroy;
   state->queue = g_async_queue_ref (async_queue);
+  state->ref_count = 1;
 
   return state;
 }
 
 static void
-ggml_language_model_complete_monitor_state_free (GGMLLanguageModelCompleteMonitorState *state)
+ggml_language_model_complete_monitor_state_unref (GGMLLanguageModelCompleteMonitorState *state)
 {
-  g_clear_pointer (&state->queue, g_async_queue_unref);
-  g_clear_pointer (&state->user_data, state->user_data_destroy);
+  if (--state->ref_count == 0)
+    {
+      g_clear_pointer (&state->queue, g_async_queue_unref);
+      g_clear_pointer (&state->user_data, state->user_data_destroy);
 
-  g_clear_pointer (&state, g_free);
+      g_clear_pointer (&state, g_free);
+    }
 }
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelCompleteMonitorState, ggml_language_model_complete_monitor_state_free)
+static GGMLLanguageModelCompleteMonitorState *
+ggml_language_model_complete_monitor_state_ref (GGMLLanguageModelCompleteMonitorState *state)
+{
+  ++state->ref_count;
+  return state;
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelCompleteMonitorState, ggml_language_model_complete_monitor_state_unref)
+
+static void
+ggml_language_model_monitor_process_completion_ready (GObject      *source_object,
+                                                      GAsyncResult *result,
+                                                      gpointer      user_data)
+{
+  g_autoptr(GGMLLanguageModelCompleteMonitorState) state = user_data;
+  g_autoptr(GTask) task = G_TASK (result);
+
+  /* We call the real callback. That will also want to unref the task
+   * so we have to ref it before calling the callback. */
+  (*state->callback) (source_object, G_ASYNC_RESULT (g_object_ref (task)), state->user_data);
+}
 
 /**
  * ggml_language_model_monitor_process_completion: (skip)
@@ -714,7 +739,14 @@ static gboolean
 ggml_language_model_monitor_process_completion (GGMLLanguageModelCompleteMonitorState *state,
                                                 GGMLLanguageModelChunkCompletion      *completion)
 {
-  g_autoptr(GTask) task = g_task_new (NULL, NULL, state->callback, state->user_data);
+  /* We have to use an extra trampoline with a ref on the
+   * GGMLLanguageModelCompleteMonitorState here because
+   * g_task_return_error / g_task_return_pointer could
+   * end up on the main loop for another iteration. */
+  GTask *task = g_task_new (NULL,
+                            NULL,
+                            ggml_language_model_monitor_process_completion_ready,
+                            ggml_language_model_complete_monitor_state_ref (state));
 
   if (completion->error != NULL)
     {
@@ -754,7 +786,7 @@ ggml_language_model_monitor_callback (gpointer user_data)
       if (ggml_language_model_monitor_process_completion (state, completion))
         {
           ggml_language_model_chunk_completion_free (completion);
-          ggml_language_model_complete_monitor_state_free (state);
+          ggml_language_model_complete_monitor_state_unref (state);
           return G_SOURCE_REMOVE;
         }
 
