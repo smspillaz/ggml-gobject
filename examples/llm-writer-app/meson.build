@@ -19,7 +19,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 gnome = import('gnome')
-pkgdatadir = join_paths(get_option('datadir'), meson.project_name())
+pkgdatadir = join_paths(get_option('datadir'), 'org.ggml-gobject.LLMWriterApp.Application')
 
 subdir('src')
 subdir('data')
