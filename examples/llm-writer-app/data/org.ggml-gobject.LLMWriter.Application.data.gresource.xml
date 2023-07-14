@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <gresource prefix="/org/ggml_gobject/LLMWriter/Application/data">
+  <gresource prefix="/org/ggml-gobject/LLMWriter/Application/data">
     <file preprocess="xml-stripblanks">main.ui</file>
     <file>application.css</file>
   </gresource>
