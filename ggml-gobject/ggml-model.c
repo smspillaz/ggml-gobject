@@ -510,6 +510,7 @@ ggml_model_unref (GGMLModel *model)
  * @inputs: (transfer none): An #GVariant with some inputs
  * @forward_parameters: (element-type utf8 int) (transfer none) (nullable): A #GHashTable with evaluation-specific parameters
  * @mem_buffer: (transfer none) (nullable): A #GBytes memory buffer that can be re-used.
+ * @cancellable: (transfer none) (nullable): A #GCancellable
  * @error: A #GError out-parameter
  *
  * Does a forward pass on the model to define the compute graph, then runs the computation.
@@ -522,6 +523,7 @@ ggml_model_forward (GGMLModel *model,
                     GVariant *inputs,
                     GHashTable *forward_parameters,
                     GBytes   *mem_buffer,
+                    GCancellable *cancellable,
                     GError **error)
 {
   g_autoptr(GGMLComputeGraph) compute_graph = ggml_compute_graph_new ();
@@ -540,7 +542,17 @@ ggml_model_forward (GGMLModel *model,
     }
 
   ggml_compute_graph_build_forward_expand (compute_graph, output);
-  ggml_compute_graph_compute (compute_graph, output->owning_context, 2);
+
+  g_autoptr(GGMLComputePlan) compute_plan = ggml_compute_graph_plan (compute_graph, 2);
+
+  if (!ggml_compute_graph_compute (compute_graph,
+                                   compute_plan,
+                                   output->owning_context,
+                                   cancellable,
+                                   error))
+    {
+      return NULL;
+    }
 
   return g_steal_pointer (&output);
 }

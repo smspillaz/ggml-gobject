@@ -154,6 +154,7 @@ ggml_language_model_forward_single_iteration (GGMLModel            *model,
                                               GBytes               *mem_buffer,
                                               int32_t              *input_tokens,
                                               size_t                n_input_tokens,
+                                              GCancellable         *cancellable,
                                               int32_t              *out_token,
                                               GError              **error)
 {
@@ -167,6 +168,7 @@ ggml_language_model_forward_single_iteration (GGMLModel            *model,
                                                             variant,
                                                             inference_parameters,
                                                             mem_buffer,
+                                                            cancellable,
                                                             error);
 
   if (logits_tensor == NULL)
@@ -191,6 +193,7 @@ ggml_language_model_forward_loop (GGMLModel           *model,
                                   int32_t             *initial_prompt_tokens,
                                   size_t               n_initial_prompt_tokens,
                                   int32_t              num_iterations,
+                                  GCancellable        *cancellable,
                                   size_t              *out_num_tokens,
                                   GError             **error)
 {
@@ -222,6 +225,7 @@ ggml_language_model_forward_loop (GGMLModel           *model,
                                                      mem_buffer,
                                                      (int32_t *) prompt_tokens->data,
                                                      prompt_tokens->len,
+                                                     cancellable,
                                                      &argmax,
                                                      error))
     {
@@ -246,6 +250,7 @@ ggml_language_model_forward_loop (GGMLModel           *model,
                                                          mem_buffer,
                                                          ((int32_t *) prompt_tokens->data) + n_initial_prompt_tokens + i,
                                                          1,
+                                                         cancellable,
                                                          &argmax,
                                                          error))
         {
@@ -283,6 +288,7 @@ ggml_language_model_decode_tokens (GGMLLanguageModel *language_model,
  * @language_model: A #GGMLLanguageModel
  * @prompt: An input prompt
  * @num_iterations: Number of tokens to generate.
+ * @cancellable: A #GCancellable
  * @out_is_complete_eos: (out): An out-variable indicating whether we hit an EOS token.
  * @error: A #GError
  *
@@ -293,6 +299,7 @@ char *
 ggml_language_model_complete (GGMLLanguageModel  *language_model,
                               const char         *prompt,
                               int32_t             num_iterations,
+                              GCancellable       *cancellable,
                               gboolean           *out_is_complete_eos,
                               GError            **error)
 {
@@ -310,6 +317,7 @@ ggml_language_model_complete (GGMLLanguageModel  *language_model,
                                                                            tokens,
                                                                            n_tokens,
                                                                            num_iterations,
+                                                                           cancellable,
                                                                            &out_num_tokens,
                                                                            error);
 
@@ -457,6 +465,7 @@ typedef struct _GGMLLanguageModelCompleteState
   size_t iterations;
   size_t chunk_size;
   GAsyncQueue *queue;
+  GCancellable *cancellable;
 } GGMLLanguageModelCompleteState;
 
 static GGMLLanguageModelCompleteState *
@@ -464,7 +473,8 @@ ggml_language_model_complete_state_new (GGMLLanguageModel    *language_model,
                                         const char           *prompt,
                                         size_t                iterations,
                                         size_t                chunk_size,
-                                        GAsyncQueue          *async_queue)
+                                        GAsyncQueue          *async_queue,
+                                        GCancellable         *cancellable)
 {
   GGMLLanguageModelCompleteState *state = g_new0 (GGMLLanguageModelCompleteState, 1);
   state->language_model = ggml_language_model_ref (language_model);
@@ -472,6 +482,7 @@ ggml_language_model_complete_state_new (GGMLLanguageModel    *language_model,
   state->iterations = iterations;
   state->chunk_size = chunk_size;
   state->queue = g_async_queue_ref (async_queue);
+  state->cancellable = cancellable != NULL ? g_object_ref (cancellable) : NULL;
 
   return state;
 }
@@ -479,6 +490,7 @@ ggml_language_model_complete_state_new (GGMLLanguageModel    *language_model,
 static void
 ggml_language_model_complete_state_free (GGMLLanguageModelCompleteState *state)
 {
+  g_clear_pointer (&state->cancellable, g_object_unref);
   g_clear_pointer (&state->queue, g_async_queue_unref);
   g_clear_pointer (&state->prompt, g_free);
 
@@ -581,6 +593,7 @@ ggml_language_model_complete_thread_loop (gpointer data)
                                                      mem_buffer,
                                                      out_prompt_tokens,
                                                      out_n_prompt_tokens,
+                                                     state->cancellable,
                                                      &chunk_tokens_data[current_chunk_index],
                                                      &error))
     {
@@ -623,6 +636,7 @@ ggml_language_model_complete_thread_loop (gpointer data)
                                                          mem_buffer,
                                                          &chunk_tokens_data[read_chunk_index],
                                                          1,
+                                                         state->cancellable,
                                                          &chunk_tokens_data[current_chunk_index],
                                                          &error))
         {
@@ -781,7 +795,11 @@ ggml_language_model_complete_async (GGMLLanguageModel    *language_model,
                                     gpointer              user_data,
                                     GDestroyNotify        user_data_destroy)
 {
-  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
+  /* We don't pass the cancellable to the task, but instead to
+   * the GGMLLanguageModelCompleteState . The reason is that the task
+   * is only there as a crutch to be used as a GAsyncResult
+   * and */
+  g_autoptr(GTask) task = g_task_new (NULL, NULL, callback, user_data);
   g_autoptr(GError) error = NULL;
 
   g_autoptr(GAsyncQueue) async_queue = g_async_queue_new_full ((GDestroyNotify) ggml_language_model_chunk_completion_free);
@@ -797,7 +815,8 @@ ggml_language_model_complete_async (GGMLLanguageModel    *language_model,
                                                                                   prompt,
                                                                                   num_iterations,
                                                                                   chunk_size,
-                                                                                  async_queue);
+                                                                                  async_queue,
+                                                                                  cancellable);
 
   return g_thread_new ("complete-thread", ggml_language_model_complete_thread_loop, state);
 }

@@ -5,6 +5,7 @@ ggml_gobject_headers_subdir = 'ggml-gobject'
 
 ggml_gobject_toplevel_introspectable_headers = files([
   'ggml-compute-graph.h',
+  'ggml-compute-plan.h',
   'ggml-context.h',
   'ggml-gobject.h',
   'ggml-gpt.h',
@@ -19,6 +20,7 @@ ggml_gobject_toplevel_introspectable_headers = files([
 ])
 ggml_gobject_toplevel_introspectable_sources = files([
   'ggml-compute-graph.c',
+  'ggml-compute-plan.c',
   'ggml-context.c',
   'ggml-gobject.c',
   'ggml-gpt.c',

@@ -432,7 +432,7 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.complete('The meaning of life is:', 7)).toEqual(
+    expect(language_model.complete('The meaning of life is:', 7, null)).toEqual(
       ['The meaning of life is: to live in a world of abundance', false]
     );
   });
@@ -488,7 +488,7 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.complete('The meaning of life is:', 7)).toEqual(
+    expect(language_model.complete('The meaning of life is:', 7, null)).toEqual(
       ['The meaning of life is: to live in a world of abundance', false]
     );
   });

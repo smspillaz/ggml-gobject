@@ -94,6 +94,7 @@ GGMLLanguageModel *ggml_language_model_load_defined_from_istream_finish (GAsyncR
 char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
                                      const char         *prompt,
                                      int32_t             num_iterations,
+                                     GCancellable       *cancellable,
                                      gboolean           *out_is_complete_eos,
                                      GError            **error);
 

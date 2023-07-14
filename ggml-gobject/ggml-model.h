@@ -71,6 +71,7 @@ GGMLTensor *ggml_model_forward (GGMLModel *model,
                                 GVariant *inputs,
                                 GHashTable *forward_parameters,
                                 GBytes   *mem_buffer,
+                                GCancellable *cancellable,
                                 GError **error);
 
 GGMLModel * ggml_model_load_from_istream (GInputStream                           *istream,
