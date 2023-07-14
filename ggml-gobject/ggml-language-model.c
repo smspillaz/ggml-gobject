@@ -799,7 +799,6 @@ ggml_language_model_complete_async (GGMLLanguageModel    *language_model,
    * the GGMLLanguageModelCompleteState . The reason is that the task
    * is only there as a crutch to be used as a GAsyncResult
    * and */
-  g_autoptr(GTask) task = g_task_new (NULL, NULL, callback, user_data);
   g_autoptr(GError) error = NULL;
 
   g_autoptr(GAsyncQueue) async_queue = g_async_queue_new_full ((GDestroyNotify) ggml_language_model_chunk_completion_free);
