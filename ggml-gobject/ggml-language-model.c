@@ -84,7 +84,7 @@ ggml_language_model_consume_istream_magic_finish (GAsyncResult  *result,
 {
   g_return_val_if_fail (g_task_is_valid (result, NULL), FALSE);
 
-  GTask *task = G_TASK (result);
+  g_autoptr(GTask) task = G_TASK (result);
 
   return g_task_propagate_boolean (task, error);
 }
@@ -102,7 +102,7 @@ ggml_language_model_consume_istream_magic_async (GInputStream         *istream,
                                                  GAsyncReadyCallback   callback,
                                                  gpointer              user_data)
 {
-  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
+  GTask *task = g_task_new (NULL, cancellable, callback, user_data);
   g_task_set_task_data (task, g_object_ref (istream), g_object_unref);
   g_task_run_in_thread (task, ggml_language_model_consume_istream_magic_thread);
 }
