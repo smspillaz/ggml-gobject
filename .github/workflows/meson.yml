@@ -25,13 +25,6 @@ jobs:
     - name: Install pip dependencies
       run: sudo pip3 install meson
 
-    - name: Cache GPT2
-      id: cache-gpt2
-      uses: actions/cache@v3
-      with:
-        path: ggml/build/models/gpt-2-117M/ggml-model.bin
-        key: ${{ runner.os }}-ggml-gpt2-117M
-
     - name: Clone jasmine-gjs
       uses: actions/checkout@v3
       with:
@@ -65,6 +58,16 @@ jobs:
         build-dir: ggml/build
         run-build: true
         options: CMAKE_INSTALL_PREFIX=/usr BUILD_SHARED_LIBS=ON GGML_BUILD_TESTS=OFF GGML_BUILD_EXAMPLES=OFF
+
+    - name: Make GPT2 directory
+      run: mkdir -p ggml/build/models/gpt-2-117M
+
+    - name: Cache GPT2
+      id: cache-gpt2
+      uses: actions/cache@v3
+      with:
+        path: ggml/build/models/gpt-2-117M/ggml-model.bin
+        key: ${{ runner.os }}-ggml-gpt2-117M
 
     - name: Fetch GPT2
       if: steps.cache-gpt2.outputs.cache-hit != 'true'
