@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include <ggml.h>
+#include <ggml/ggml.h>
 #include <glib-object.h>
 
 G_BEGIN_DECLS
