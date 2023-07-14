@@ -19,7 +19,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 gnome = import('gnome')
-pkgdatadir = join_paths(get_option('datadir'), 'org.ggml_gobject.LLMWriter.Application')
+pkgdatadir = join_paths(get_option('datadir'), 'org.ggml-gobject.LLMWriter.Application')
 gjs = find_program('gjs', 'gjs-console')
 
 gnome.compile_resources(
