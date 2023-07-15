@@ -29,7 +29,7 @@ jobs:
       id: cache-gpt2
       uses: actions/cache@v3
       with:
-        path: ../ggml/build/models/gpt-2-117M/ggml-model.bin
+        path: ggml/build/models/gpt-2-117M/ggml-model.bin
         key: ${{ runner.os }}-ggml-gpt2-117M
 
     - name: Clone jasmine-gjs
@@ -39,7 +39,16 @@ jobs:
         repository: ptomato/jasmine-gjs
 
     - name: Configure jasmine-gjs
-      run: mv jasmine-gjs ../jasmine-gjs && cd ../jasmine-gjs && meson build && cd build && ninja && sudo ninja install
+      working-directory: jasmine-gjs
+      run: meson build && cd build && ninja && sudo ninja install
+
+    - name: Build jasmine-gjs
+      working-directory: jasmine-gjs/build
+      run: ninja
+
+    - name: Install jasmine-gjs
+      working-directory: jasmine-gjs/build
+      run: sudo ninja install
 
     - name: Clone ggml
       uses: actions/checkout@v3
@@ -48,42 +57,51 @@ jobs:
         repository: ggerganov/ggml
         ref: da3015e52487d8fdb1a05de0879cdc3fc8976bc2
 
-    - name: Move ggml to parent
-      run: mv ggml ../ggml
-
     - name: Build ggml
       uses: threeal/cmake-action@v1.2.0
       with:
         generator: Ninja
-        source-dir: ../ggml
-        build-dir: ../ggml/build
+        source-dir: ggml
+        build-dir: ggml/build
         run-build: true
         options: CMAKE_INSTALL_PREFIX=/usr BUILD_SHARED_LIBS=ON GGML_BUILD_TESTS=OFF GGML_BUILD_EXAMPLES=OFF
 
     - name: Fetch GPT2
       if: steps.cache-gpt2.outputs.cache-hit != 'true'
-      run: mkdir -p ../ggml/build && cd ../ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M
+      run: mkdir -p ggml/build && cd ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M
 
     - name: Check cwd
       run: pwd
 
     - name: Install ggml
-      run: cd ../ggml/build && sudo ninja install
+      working-directory: ggml/build
+      run: sudo ninja install
 
     - uses: actions/checkout@v3
+      with:
+        path: ggml-gobject
 
     - name: Fetch header
       run: cp ../ggml/include/ggml/ggml.h ggml-gobject/ggml.h
 
-    - name: Meson Build
+    - name: Meson Configure
       # You may pin to the exact commit or the version.
       # uses: BSFishy/meson-build@656b2a360964b249ac82905a52018921e01d875b
-      uses: BSFishy/meson-build@v1.0.3
-      with:
-        # The action to run
-        action: test
-        # The directory to build the project to
-        directory: build # default is build
+      working-directory: ggml-gobject
+      run: meson build
+
+    - name: Ninja Build
+      # You may pin to the exact commit or the version.
+      # uses: BSFishy/meson-build@656b2a360964b249ac82905a52018921e01d875b
+      working-directory: ggml-gobject/build
+      run: ninja
+
+    - name: Ninja Test
+      # You may pin to the exact commit or the version.
+      # uses: BSFishy/meson-build@656b2a360964b249ac82905a52018921e01d875b
+      working-directory: ggml-gobject/build
+      run: ninja test
+
     - name: Check logs
       if: always()
-      run: cat build/meson-logs/testlog.txt
+      run: cat ggml-gobject/build/meson-logs/testlog.txt
