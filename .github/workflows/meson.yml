@@ -70,9 +70,6 @@ jobs:
       if: steps.cache-gpt2.outputs.cache-hit != 'true'
       run: mkdir -p ggml/build && cd ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M
 
-    - name: Check cwd
-      run: pwd
-
     - name: Install ggml
       working-directory: ggml/build
       run: sudo ninja install
@@ -80,9 +77,6 @@ jobs:
     - uses: actions/checkout@v3
       with:
         path: ggml-gobject
-
-    - name: Fetch header
-      run: cp ../ggml/include/ggml/ggml.h ggml-gobject/ggml.h
 
     - name: Meson Configure
       # You may pin to the exact commit or the version.
