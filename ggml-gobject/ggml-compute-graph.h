@@ -23,6 +23,8 @@
 #pragma once
 
 #include <glib-object.h>
+#include <gio/gio.h>
+#include <ggml-gobject/ggml-compute-plan.h>
 #include <ggml-gobject/ggml-context.h>
 #include <ggml-gobject/ggml-tensor.h>
 
@@ -33,11 +35,16 @@ typedef struct _GGMLComputeGraph GGMLComputeGraph;
 #define GGML_TYPE_COMPUTE_GRAPH ggml_compute_graph_get_type ()
 GType ggml_compute_graph_get_type (void);
 
-GGMLComputeGraph * ggml_compute_graph_new (size_t n_threads);
+GGMLComputeGraph * ggml_compute_graph_new (void);
 GGMLComputeGraph * ggml_compute_graph_ref (GGMLComputeGraph *compute_graph);
 void ggml_compute_graph_unref (GGMLComputeGraph *compute_graph);
 void ggml_compute_graph_build_forward_expand (GGMLComputeGraph *compute_graph, GGMLTensor *tensor);
-void ggml_compute_graph_compute (GGMLComputeGraph *compute_graph, GGMLContext *context);
+GGMLComputePlan * ggml_compute_graph_plan (GGMLComputeGraph *compute_graph, int n_threads);
+gboolean ggml_compute_graph_compute (GGMLComputeGraph  *compute_graph,
+                                     GGMLComputePlan   *compute_plan,
+                                     GGMLContext       *context,
+                                     GCancellable      *cancellable,
+                                     GError           **error);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLComputeGraph, ggml_compute_graph_unref);
 

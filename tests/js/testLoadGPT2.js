@@ -432,9 +432,25 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.complete('The meaning of life is:', 7)).toEqual(
+    expect(language_model.complete('The meaning of life is:', 7, null)).toEqual(
       ['The meaning of life is: to live in a world of abundance', false]
     );
+  });
+  it('can handle cancellation', function() {
+    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
+    const istream = file.read(null);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2,
+      istream,
+      null
+    );
+
+    const cancellable = new Gio.Cancellable({});
+    cancellable.cancel();
+
+    // Not the best test, but can't figure out how to match the error exactly
+    expect(() => language_model.complete('The meaning of life is:', 7, cancellable)).toThrow();
   });
   it('can do a forward pass through some data asynchronously', function(done) {
     const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
@@ -467,6 +483,43 @@ describe('GGML GPT2', function() {
     );
     thread.join();
   });
+  it('can handle cancellation on asynchronous completions', (done) => {
+    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
+    const istream = file.read(null);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2,
+      istream,
+      null
+    );
+
+    let completion_tokens = [];
+
+    let callbackTimes = 0;
+    let cancellable = new Gio.Cancellable({});
+    /* We immediately cancel to avoid a race condition where
+     * we get the first part back without cancellation */
+    let thread = language_model.complete_async(
+      'The meaning of life is:',
+      7,
+      5,
+      cancellable,
+      (src, res) => {
+        /* We get back the prompt on the first callback, the second one is cancelled */
+        if (callbackTimes++ == 0)
+          {
+            expect(language_model.complete_finish(res)).toEqual(['The meaning of life is:', false, false])
+          }
+        else if (callbackTimes++ == 1)
+          {
+            expect(() => language_model.complete_finish(res)).toThrow();
+          }
+        done();
+      }
+    );
+    cancellable.cancel();
+    thread.join();
+  });
   it('can do a forward pass defined in JS through some data', function() {
     const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
     const istream = file.read(null);
@@ -488,7 +541,7 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.complete('The meaning of life is:', 7)).toEqual(
+    expect(language_model.complete('The meaning of life is:', 7, null)).toEqual(
       ['The meaning of life is: to live in a world of abundance', false]
     );
   });

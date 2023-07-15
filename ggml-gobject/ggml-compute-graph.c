@@ -21,6 +21,7 @@
  */
 
 #include <ggml-gobject/ggml-compute-graph.h>
+#include <ggml-gobject/internal/ggml-compute-plan-internal.h>
 #include <ggml-gobject/internal/ggml-context-internal.h>
 #include <ggml-gobject/internal/ggml-tensor-internal.h>
 
@@ -31,15 +32,13 @@ struct _GGMLComputeGraph {
 
 /**
  * ggml_compute_graph_new:
- * @n_threads: Number of threads to use for computation.
  *
  * Returns: (transfer full): A new #GGMLComputeGraph
  */
 GGMLComputeGraph *
-ggml_compute_graph_new (size_t n_threads)
+ggml_compute_graph_new (void)
 {
   GGMLComputeGraph *compute_graph = g_new0 (GGMLComputeGraph, 1);
-  compute_graph->cgraph.n_threads = n_threads;
   compute_graph->ref_count = 1;
 
   return compute_graph;
@@ -77,6 +76,23 @@ ggml_compute_graph_unref (GGMLComputeGraph *compute_graph)
 }
 
 /**
+ * ggml_compute_graph_plan:
+ * @compute_graph: A #GGMLComputeGraph
+ * @n_threads: Number of threads to use, or -1 for default
+ *
+ * Returns: (transfer full): A new #GGMLComputePlan
+ */
+GGMLComputePlan *
+ggml_compute_graph_plan (GGMLComputeGraph *compute_graph, int n_threads)
+{
+  GGMLComputePlan *compute_plan = g_new0 (GGMLComputePlan, 1);
+  compute_plan->cplan = ggml_graph_plan (&compute_graph->cgraph, n_threads);
+  compute_plan->ref_count = 1;
+
+  return compute_plan;
+}
+
+/**
  * ggml_compute_graph_build_forward_expand:
  * @compute_graph: A #GGMLComputeGraph
  * @tensor: A #GGMLTensor with the end result of the computation
@@ -93,18 +109,48 @@ ggml_compute_graph_build_forward_expand (GGMLComputeGraph *compute_graph, GGMLTe
 /**
  * ggml_compute_graph_compute:
  * @compute_graph: A #GGMLComputeGraph
- * @context: A #GGMLContext used for the computation itself
+ * @compute_plan: A #GGMLComputePlan
+ * @context: A #GGMLContext
+ * @cancellable: A #GCancellable
+ * @error: A #GError
  *
  * Runs the computation over the compute graph, starting from the input
  * tensors in the computation all the way to the output. After running this,
  * the tensor passed in ggml_compute_graph_build_forward_expand and all of its ancestors
  * will have some defined value.
+ *
+ * Returns: %TRUE on success (where the end result will be in the output tensor
+ *          passed to %ggml_compute_graph_build_forward_expand or %FALSE with @error
+ *          set on failure)
  */
-void
-ggml_compute_graph_compute (GGMLComputeGraph *compute_graph,
-                            GGMLContext *context)
+gboolean
+ggml_compute_graph_compute (GGMLComputeGraph  *compute_graph,
+                            GGMLComputePlan   *compute_plan,
+                            GGMLContext       *context,
+                            GCancellable      *cancellable,
+                            GError           **error)
 {
-  ggml_graph_compute (context->ctx, &compute_graph->cgraph);
+  compute_plan->cplan.abort_callback = (_Bool (*)(void*))g_cancellable_is_cancelled;
+  compute_plan->cplan.abort_callback_data = cancellable;
+
+  /* We have to do some manual bookkeeping of the work size here */
+  struct ggml_tensor *buf = ggml_new_tensor_1d (context->ctx, GGML_TYPE_I8, compute_plan->cplan.work_size);
+  compute_plan->cplan.work_data = buf->data;
+
+  int exit_status = ggml_graph_compute (&compute_graph->cgraph, &compute_plan->cplan);
+
+  switch (exit_status)
+    {
+      case GGML_EXIT_ABORTED:
+        g_set_error (error, G_IO_ERROR, G_IO_ERROR_CANCELLED, "Computation cancelled");
+        return FALSE;
+        break;
+      case GGML_EXIT_SUCCESS:
+        return TRUE;
+    }
+
+  g_assert_not_reached();
+  return FALSE;
 }
 
 G_DEFINE_BOXED_TYPE (GGMLComputeGraph,

@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-types.h
+ * ggml-gobject/ggml-compute-plan.h
  *
- * Header file for ggml-types
+ * Header file for ggml-compute-plan
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -22,26 +22,20 @@
 
 #pragma once
 
-#include <ggml/ggml.h>
 #include <glib-object.h>
+#include <ggml-gobject/ggml-context.h>
+#include <ggml-gobject/ggml-tensor.h>
 
 G_BEGIN_DECLS
 
-typedef enum
-{
-  GGML_DATA_TYPE_F32 = GGML_TYPE_F32,
-  GGML_DATA_TYPE_F16 = GGML_TYPE_F16,
-  GGML_DATA_TYPE_Q4_0 = GGML_TYPE_Q4_0,
-  GGML_DATA_TYPE_Q4_1 = GGML_TYPE_Q4_1,
-  GGML_DATA_TYPE_Q5_0 = GGML_TYPE_Q5_0,
-  GGML_DATA_TYPE_Q5_1 = GGML_TYPE_Q5_1,
-  GGML_DATA_TYPE_Q8_0 = GGML_TYPE_Q8_0,
-  GGML_DATA_TYPE_Q8_1 = GGML_TYPE_Q8_1,
-  GGML_DATA_TYPE_I8 = GGML_TYPE_I8,
-  GGML_DATA_TYPE_I16 = GGML_TYPE_I16,
-  GGML_DATA_TYPE_I32 = GGML_TYPE_I32,
-} GGMLDataType;
+typedef struct _GGMLComputePlan GGMLComputePlan;
 
-size_t ggml_size_of_data_type (GGMLDataType data_type);
+#define GGML_TYPE_COMPUTE_PLAN ggml_compute_plan_get_type ()
+GType ggml_compute_plan_get_type (void);
+
+GGMLComputePlan * ggml_compute_plan_ref (GGMLComputePlan *compute_plan);
+void ggml_compute_plan_unref (GGMLComputePlan *compute_plan);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLComputePlan, ggml_compute_plan_unref);
 
 G_END_DECLS

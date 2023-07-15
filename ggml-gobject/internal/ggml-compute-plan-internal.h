@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-context-internal.h
+ * ggml-gobject/ggml-compute-plan-internal.h
  *
- * Library code for ggml-context-internal
+ * Library code for ggml-compute-plan-internal
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -23,13 +23,14 @@
 #include <ggml/ggml.h>
 #include <glib-object.h>
 #include <ggml-gobject/ggml-context.h>
+#include <ggml-gobject/ggml-compute-graph.h>
+#include <ggml-gobject/ggml-compute-plan.h>
 #include <ggml-gobject/ggml-types.h>
 
 G_BEGIN_DECLS
 
-struct _GGMLContext {
-  GBytes *mem_buffer;
-  struct ggml_context *ctx;
+struct _GGMLComputePlan {
+  struct ggml_cplan cplan;
   size_t ref_count;
 };
 
