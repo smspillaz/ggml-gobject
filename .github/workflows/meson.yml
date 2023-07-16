@@ -22,7 +22,7 @@ jobs:
     - name: Update apt repositories
       run: sudo apt-get update
     - name: Install apt dependencies
-      run: sudo apt-get install build-essential python3-pip cmake gobject-introspection libglib2.0-dev ninja-build gjs libgirepository1.0-dev
+      run: sudo apt-get install build-essential gir1.2-soup-3.0 python3-pip cmake gobject-introspection libglib2.0-dev ninja-build gjs libgirepository1.0-dev libsoup-3.0-dev
     - name: Install pip dependencies
       run: sudo pip3 install meson
 
