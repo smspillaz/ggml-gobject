@@ -371,8 +371,7 @@ describe('GGML GPT2', function() {
     const model_desc = createModelDescGPT2(n_inp, d_model, d_ff, n_layers, n_ctx);
   });
   it('can load the GPT2 weights from a bin file', function() {
-    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
-    const istream = file.read(null);
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
 
     const language_model = GGML.LanguageModel.load_from_istream(
       istream,
@@ -388,8 +387,7 @@ describe('GGML GPT2', function() {
     );
   });
   it('can load the GPT2 weights from a bin file asynchronously', function(done) {
-    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
-    const istream = file.read(null);
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
 
     GGML.LanguageModel.load_from_istream_async(
       istream,
@@ -409,8 +407,7 @@ describe('GGML GPT2', function() {
     );
   });
   it('can load the GPT2 weights from a bin file asynchronously (defined)', function(done) {
-    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
-    const istream = file.read(null);
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
 
     GGML.LanguageModel.load_defined_from_istream_async(
       GGML.DefinedLanguageModel.GPT2,
@@ -423,8 +420,7 @@ describe('GGML GPT2', function() {
     );
   });
   it('can do a forward pass through some data', function() {
-    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
-    const istream = file.read(null);
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
 
     const language_model = GGML.LanguageModel.load_defined_from_istream(
       GGML.DefinedLanguageModel.GPT2,
@@ -437,8 +433,7 @@ describe('GGML GPT2', function() {
     );
   });
   it('can handle cancellation', function() {
-    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
-    const istream = file.read(null);
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
 
     const language_model = GGML.LanguageModel.load_defined_from_istream(
       GGML.DefinedLanguageModel.GPT2,
@@ -453,8 +448,7 @@ describe('GGML GPT2', function() {
     expect(() => language_model.complete('The meaning of life is:', 7, cancellable)).toThrow();
   });
   it('can do a forward pass through some data asynchronously', function(done) {
-    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
-    const istream = file.read(null);
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
 
     const language_model = GGML.LanguageModel.load_defined_from_istream(
       GGML.DefinedLanguageModel.GPT2,
@@ -484,8 +478,7 @@ describe('GGML GPT2', function() {
     thread.join();
   });
   it('can handle cancellation on asynchronous completions', (done) => {
-    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
-    const istream = file.read(null);
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
 
     const language_model = GGML.LanguageModel.load_defined_from_istream(
       GGML.DefinedLanguageModel.GPT2,
@@ -521,8 +514,7 @@ describe('GGML GPT2', function() {
     thread.join();
   });
   it('can do a forward pass defined in JS through some data', function() {
-    const file = Gio.File.new_for_path('../../ggml/build/models/gpt-2-117M/ggml-model.bin');
-    const istream = file.read(null);
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
 
     const language_model = GGML.LanguageModel.load_from_istream(
       istream,
