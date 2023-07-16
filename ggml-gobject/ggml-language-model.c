@@ -20,6 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-gpt.h>
 #include <ggml-gobject/ggml-language-model.h>
 #include <ggml-gobject/internal/ggml-stream-internal.h>
@@ -1293,6 +1294,43 @@ ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageModel   
                                                cancellable,
                                                callback,
                                                user_data);
+}
+
+static const char *ggml_language_model_urls[] = {
+  "https://huggingface.co/ggerganov/ggml/resolve/main/ggml-model-gpt-2-117M.bin"
+};
+
+#define GGML_GOBJECT_MODELS_VERSION "0"
+
+/**
+ * ggml_language_model_stream_from_cache:
+ * @defined_model: A #GGMLDefinedLanguageModel
+ * @error: A #GError
+ *
+ * Creates a new #GFileInputStream which will either download the model upon the first
+ * read, or return a cached version from the disk.
+ *
+ * Returns: (transfer full): A #GFileInputStream on success, %NULL with @error set on failure.
+ */
+GFileInputStream *
+ggml_language_model_stream_from_cache (GGMLDefinedLanguageModel   defined_model,
+                                       GError                   **error)
+{
+  const char *remote_url = ggml_language_model_urls[defined_model];
+  g_autofree char *path = NULL;
+
+  if (!g_uri_split (remote_url, G_URI_FLAGS_NONE, NULL, NULL, NULL, NULL, &path, NULL, NULL, error))
+    return NULL;
+
+  g_autofree char *basename = g_path_get_basename (path);
+  g_autofree char *local_path = g_build_filename (g_get_user_data_dir (),
+                                                  "ggml-gobject",
+                                                  GGML_GOBJECT_MODELS_VERSION,
+                                                  "models",
+                                                  basename,
+                                                  NULL);
+
+  return ggml_cached_model_istream_new (remote_url, local_path);
 }
 
 /**
