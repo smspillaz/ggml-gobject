@@ -4,6 +4,7 @@ api_version = '0'
 ggml_gobject_headers_subdir = 'ggml-gobject'
 
 ggml_gobject_toplevel_introspectable_headers = files([
+  'ggml-cached-model.h',
   'ggml-compute-graph.h',
   'ggml-compute-plan.h',
   'ggml-context.h',
@@ -19,6 +20,7 @@ ggml_gobject_toplevel_introspectable_headers = files([
   'ggml-types.h',
 ])
 ggml_gobject_toplevel_introspectable_sources = files([
+  'ggml-cached-model.c',
   'ggml-compute-graph.c',
   'ggml-compute-plan.c',
   'ggml-context.c',
@@ -54,7 +56,7 @@ ggml_gobject_lib = shared_library(
   soversion: api_version,
   install: true,
   include_directories: [ ggml_gobject_inc ],
-  dependencies: [ glib, gobject, gio, ggml, m_dep ]
+  dependencies: [ glib, gobject, gio, ggml, m_dep, soup ]
 )
 
 introspection_sources = [
@@ -68,7 +70,7 @@ ggml_gobject_gir = gnome.generate_gir(
   extra_args: ['--warn-all', '-U', '__ARM_NEON'],
   identifier_prefix: 'GGML',
   include_directories: ggml_gobject_inc,
-  includes: ['GLib-2.0', 'Gio-2.0', 'GObject-2.0'],
+  includes: ['GLib-2.0', 'Gio-2.0', 'GObject-2.0', 'Soup-3.0'],
   install: true,
   namespace: 'GGML',
   nsversion: api_version,
