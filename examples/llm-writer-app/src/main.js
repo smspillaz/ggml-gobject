@@ -35,6 +35,10 @@ const {Gdk, GObject, Gio, GLib, Gtk, GGML} = imports.gi;
 
 const RESOURCE_PATH = 'resource:///org/ggml-gobject/LLMWriter/Application/data';
 
+const STATE_TEXT_EDITOR = 0;
+const STATE_PREDICTING = 1;
+const STATE_WAITING = 2;
+
 const LLMWriterAppMainWindow = GObject.registerClass({
   Template: `${RESOURCE_PATH}/main.ui`,
   Children: [
@@ -50,20 +54,55 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       title: GLib.get_application_name(),
       show_close_button: true
     });
+    this._spinner = new Gtk.Spinner({
+      visible: true
+    });
+    header.pack_end(this._spinner);
     this.set_titlebar(header);
 
     this._languageModel = null;
+    this._textBufferState = STATE_TEXT_EDITOR;
+    this._predictionsStartedAt = -1;
+    this._cancellable = null;
 
     this._lastCursorOffset = this.text_view.get_buffer().cursor_position;
+    const buffer = this.text_view.get_buffer();
+
+    const removePredictedText = () => {
+      const mark = buffer.get_mark("predictions-start");
+      const beginIter = buffer.get_iter_at_mark(mark);
+      const endIter = buffer.get_end_iter();
+      this._textBufferState = STATE_TEXT_EDITOR;
+      buffer.delete(beginIter, endIter);
+      buffer.delete_mark(mark);
+    };
+    const resetState = () => {
+      removePredictedText();
+      this._candidateText = '';
+      this.text_view.set_editable(true);
+      this._spinner.stop();
+    };
+    const maybeAbortPrediction = () => {
+      if (this._textBufferState === STATE_PREDICTING) {
+        if (this._cancellable !== null) {
+          this._cancellable.cancel();
+          this._cancellable = null;
+        }
+      }
+      else if (this._textBufferState === STATE_WAITING) {
+        resetState();
+      }
+    };
+
     this.text_view.connect('move-cursor', (obj, step, count, extend_selection) => {
-      const buffer = this.text_view.get_buffer();
       const currentPosition = buffer.cursor_position;
       this._lastCursorOffset = currentPosition;
 
       if (currentPosition > 0 &&
           currentPosition === this._lastCursorOffset &&
           count > 0 &&
-          this._languageModel !== null) {
+          this._languageModel !== null &&
+          this._textBufferState === STATE_TEXT_EDITOR) {
         const text = buffer.get_text(
           buffer.get_start_iter(),
           buffer.get_end_iter(),
@@ -71,58 +110,93 @@ const LLMWriterAppMainWindow = GObject.registerClass({
         );
 
         this.text_view.set_editable(false);
+        this._cancellable = new Gio.Cancellable({});
+        this._textBufferState = STATE_PREDICTING;
+        this._candidateText = '';
+        this._spinner.start();
+        buffer.create_mark("predictions-start", buffer.get_end_iter(), true);
         this._languageModel.complete_async(
           text,
           10,
           2,
-          null,
+          this._cancellable,
           (src, res) => {
-            const [part, is_complete, is_complete_eos] = this._languageModel.complete_finish(res);
+            let part, is_complete, is_complete_eos;
+            try {
+              [part, is_complete, is_complete_eos] = this._languageModel.complete_finish(res);
+            } catch (e) {
+              if (e.code == Gio.IOErrorEnum.CANCELLED) {
+                resetState();
+              }
+              return;
+            }
 
             if (part === text) {
               return;
             }
 
             if (is_complete) {
-              this.text_view.set_editable(true);
+              this._cancellable = null;
+              this._textBufferState = STATE_WAITING;
+              this._spinner.stop();
             }
 
-            buffer.insert_at_cursor(part, part.length);
+            this._candidateText += part;
+            const markup = `<span foreground="gray">${part}</span>`
+            buffer.insert_markup(buffer.get_end_iter(), markup, markup.length);
             System.gc();
           }
         );
+      } else if (currentPosition > 0 &&
+                 currentPosition === this._lastCursorOffset &&
+                 count > 0 &&
+                 this._languageModel !== null &&
+                 this._textBufferState === STATE_WAITING) {
+        // Delete the gray text and substitute the real text.
+        removePredictedText();
+
+        buffer.insert(buffer.get_end_iter(), this._candidateText, this._candidateText.length);
+        this._candidateText = '';
+        this._textBufferState = STATE_TEXT_EDITOR;
+        this.text_view.set_editable(true);
+      } else if (count < 0) {
+        if (this._textBufferState === STATE_PREDICTING) {
+          if (this._cancellable !== null) {
+            this._cancellable.cancel();
+            this._cancellable = null;
+          }
+        }
+
+        if (this._textBufferState === STATE_WAITING) {
+          resetState();
+        }
+
+        return false;
       }
     });
+    this.text_view.connect('backspace', () => {
+      maybeAbortPrediction();
+      return false;
+    });
+    this.text_view.connect('insert-at-cursor', maybeAbortPrediction);
+    this.text_view.connect('delete-from-cursor', maybeAbortPrediction);
+    this.text_view.connect('paste-clipboard', maybeAbortPrediction);
   }
 
   vfunc_show() {
-    let dialog = new Gtk.FileChooserDialog({
-      action: Gtk.FileChooserAction.OPEN,
-      select_multiple: false,
-      transient_for: this,
-      modal: true,
-      title: 'Open'
-    });
-
-    dialog.add_button('OK', Gtk.ResponseType.OK);
-    dialog.connect('response', (dialog, responseId) => {
-      this._modelPath = dialog.get_filename();
-      dialog.destroy();
-
-      const file = Gio.File.new_for_path(this._modelPath);
-      const istream = file.read(null);
-      GGML.LanguageModel.load_defined_from_istream_async(
-        GGML.DefinedLanguageModel.GPT2,
-        istream,
-        null,
-        (src, res) => {
-          this._languageModel = GGML.LanguageModel.load_defined_from_istream_finish (res);
-        }
-      );
-    });
+    this._spinner.start();
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
+    GGML.LanguageModel.load_defined_from_istream_async(
+      GGML.DefinedLanguageModel.GPT2,
+      istream,
+      null,
+      (src, res) => {
+        this._languageModel = GGML.LanguageModel.load_defined_from_istream_finish(res);
+        this._spinner.stop();
+      }
+    );
 
     super.vfunc_show();
-    dialog.show();
   }
 });
 
