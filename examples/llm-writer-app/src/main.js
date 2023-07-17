@@ -50,6 +50,10 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       title: GLib.get_application_name(),
       show_close_button: true
     });
+    this._spinner = new Gtk.Spinner({
+      visible: true
+    });
+    header.pack_end(this._spinner);
     this.set_titlebar(header);
 
     this._languageModel = null;
