@@ -29,6 +29,7 @@ glib = dependency('glib-2.0')
 gio = dependency('gio-2.0')
 gobject = dependency('gobject-2.0')
 ggml = dependency('ggml')
+soup = dependency('libsoup-3.0')
 
 ggml_gobject_inc = include_directories('.')
 

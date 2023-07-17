@@ -9,6 +9,7 @@ on:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
+  XDG_DATA_HOME: ${{ github.workspace }}/data
 
 jobs:
   build:
@@ -21,7 +22,7 @@ jobs:
     - name: Update apt repositories
       run: sudo apt-get update
     - name: Install apt dependencies
-      run: sudo apt-get install build-essential python3-pip cmake gobject-introspection libglib2.0-dev ninja-build gjs libgirepository1.0-dev
+      run: sudo apt-get install build-essential gir1.2-soup-3.0 python3-pip cmake gobject-introspection libglib2.0-dev ninja-build gjs libgirepository1.0-dev libsoup-3.0-dev
     - name: Install pip dependencies
       run: sudo pip3 install meson
 
@@ -60,18 +61,18 @@ jobs:
         options: CMAKE_INSTALL_PREFIX=/usr BUILD_SHARED_LIBS=ON GGML_BUILD_TESTS=OFF GGML_BUILD_EXAMPLES=OFF
 
     - name: Make GPT2 directory
-      run: mkdir -p ggml/build/models/gpt-2-117M
+      run: mkdir -p ${{ github.workspace }}/data/ggml-gobject/0/models
 
     - name: Cache GPT2
       id: cache-gpt2
       uses: actions/cache@v3
       with:
-        path: ggml/build/models/gpt-2-117M/ggml-model.bin
+        path: ${{ github.workspace }}/data/ggml-gobject/0/models/ggml-model-gpt-2-117M.bin
         key: ${{ runner.os }}-ggml-gpt2-117M
 
     - name: Fetch GPT2
       if: steps.cache-gpt2.outputs.cache-hit != 'true'
-      run: mkdir -p ggml/build && cd ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M
+      run: mkdir -p ggml/build && cd ggml/build && ../examples/gpt-2/download-ggml-model.sh 117M && mv models/gpt-2-117M/ggml-model.bin ${{ github.workspace }}/data/ggml-gobject/0/models/ggml-model-gpt-2-117M.bin
 
     - name: Install ggml
       working-directory: ggml/build
