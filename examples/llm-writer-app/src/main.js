@@ -100,33 +100,19 @@ const LLMWriterAppMainWindow = GObject.registerClass({
   }
 
   vfunc_show() {
-    let dialog = new Gtk.FileChooserDialog({
-      action: Gtk.FileChooserAction.OPEN,
-      select_multiple: false,
-      transient_for: this,
-      modal: true,
-      title: 'Open'
-    });
-
-    dialog.add_button('OK', Gtk.ResponseType.OK);
-    dialog.connect('response', (dialog, responseId) => {
-      this._modelPath = dialog.get_filename();
-      dialog.destroy();
-
-      const file = Gio.File.new_for_path(this._modelPath);
-      const istream = file.read(null);
-      GGML.LanguageModel.load_defined_from_istream_async(
-        GGML.DefinedLanguageModel.GPT2,
-        istream,
-        null,
-        (src, res) => {
-          this._languageModel = GGML.LanguageModel.load_defined_from_istream_finish (res);
-        }
-      );
-    });
+    this._spinner.start();
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2);
+    GGML.LanguageModel.load_defined_from_istream_async(
+      GGML.DefinedLanguageModel.GPT2,
+      istream,
+      null,
+      (src, res) => {
+        this._languageModel = GGML.LanguageModel.load_defined_from_istream_finish(res);
+        this._spinner.stop();
+      }
+    );
 
     super.vfunc_show();
-    dialog.show();
   }
 });
 
