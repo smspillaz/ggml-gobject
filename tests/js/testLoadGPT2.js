@@ -486,8 +486,6 @@ describe('GGML GPT2', function() {
       null
     );
 
-    let completion_tokens = [];
-
     let callbackTimes = 0;
     let cancellable = new Gio.Cancellable({});
     /* We immediately cancel to avoid a race condition where
