@@ -775,6 +775,8 @@ ggml_language_model_monitor_callback (gpointer message, gpointer user_data)
     {
       return G_SOURCE_REMOVE;
     }
+
+  return G_SOURCE_CONTINUE;
 }
 
 /**
