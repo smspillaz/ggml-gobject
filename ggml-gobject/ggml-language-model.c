@@ -826,7 +826,7 @@ ggml_language_model_complete_async (GGMLLanguageModel    *language_model,
   GSource *monitor_source = ggml_async_queue_source_new (async_queue,
                                                          ggml_language_model_monitor_callback,
                                                          g_steal_pointer (&monitor_state),
-                                                         ggml_language_model_complete_monitor_state_unref,
+                                                         (GDestroyNotify) ggml_language_model_complete_monitor_state_unref,
                                                          cancellable);
   g_source_attach (g_steal_pointer (&monitor_source), NULL);
 
