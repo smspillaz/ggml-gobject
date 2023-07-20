@@ -142,7 +142,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
             }
 
             this._candidateText += part;
-            const markup = `<span foreground="gray">${part}</span>`
+            const markup = `<span foreground="gray">${GLib.markup_escape_text(part, part.length)}</span>`
             buffer.insert_markup(buffer.get_end_iter(), markup, markup.length);
             System.gc();
           }
