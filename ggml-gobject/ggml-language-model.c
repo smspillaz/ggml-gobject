@@ -23,6 +23,7 @@
 #include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-gpt.h>
 #include <ggml-gobject/ggml-language-model.h>
+#include <ggml-gobject/internal/ggml-async-queue-source.h>
 #include <ggml-gobject/internal/ggml-stream-internal.h>
 
 struct _GGMLLanguageModel {
@@ -667,7 +668,6 @@ ggml_language_model_complete_thread_loop (gpointer data)
 
 typedef struct _GGMLLanguageModelCompleteMonitorState
 {
-  GAsyncQueue *queue;
   GAsyncReadyCallback callback;
   gpointer user_data;
   GDestroyNotify user_data_destroy;
@@ -675,8 +675,7 @@ typedef struct _GGMLLanguageModelCompleteMonitorState
 } GGMLLanguageModelCompleteMonitorState;
 
 static GGMLLanguageModelCompleteMonitorState *
-ggml_language_model_complete_monitor_state_new (GAsyncQueue          *async_queue,
-                                                GAsyncReadyCallback   callback,
+ggml_language_model_complete_monitor_state_new (GAsyncReadyCallback   callback,
                                                 gpointer              user_data,
                                                 GDestroyNotify        user_data_destroy)
 {
@@ -684,7 +683,6 @@ ggml_language_model_complete_monitor_state_new (GAsyncQueue          *async_queu
   state->callback = callback;
   state->user_data = user_data;
   state->user_data_destroy = user_data_destroy;
-  state->queue = g_async_queue_ref (async_queue);
   state->ref_count = 1;
 
   return state;
@@ -695,7 +693,6 @@ ggml_language_model_complete_monitor_state_unref (GGMLLanguageModelCompleteMonit
 {
   if (--state->ref_count == 0)
     {
-      g_clear_pointer (&state->queue, g_async_queue_unref);
       g_clear_pointer (&state->user_data, state->user_data_destroy);
 
       g_clear_pointer (&state, g_free);
@@ -768,31 +765,18 @@ ggml_language_model_monitor_process_completion (GGMLLanguageModelCompleteMonitor
 }
 
 static gboolean
-ggml_language_model_monitor_callback (gpointer user_data)
+ggml_language_model_monitor_callback (gpointer message, gpointer user_data)
 {
   GGMLLanguageModelCompleteMonitorState *state = user_data;
+  g_autoptr(GGMLLanguageModelChunkCompletion) completion = message;
 
-  while (TRUE)
+  /* If we return TRUE*/
+  if (ggml_language_model_monitor_process_completion (state, completion))
     {
-      GGMLLanguageModelChunkCompletion *completion = g_async_queue_try_pop (state->queue);
-
-      /* Nothing more in the queue, but we're not done with our completion,
-       * so return G_SOURCE_CONTINUE here. */
-      if (completion == NULL)
-        {
-          return G_SOURCE_CONTINUE;
-        }
-
-      /* If we return TRUE*/
-      if (ggml_language_model_monitor_process_completion (state, completion))
-        {
-          ggml_language_model_chunk_completion_free (completion);
-          ggml_language_model_complete_monitor_state_unref (state);
-          return G_SOURCE_REMOVE;
-        }
-
-      ggml_language_model_chunk_completion_free (completion);
+      return G_SOURCE_REMOVE;
     }
+
+  return G_SOURCE_CONTINUE;
 }
 
 /**
@@ -835,13 +819,16 @@ ggml_language_model_complete_async (GGMLLanguageModel    *language_model,
   g_autoptr(GError) error = NULL;
 
   g_autoptr(GAsyncQueue) async_queue = g_async_queue_new_full ((GDestroyNotify) ggml_language_model_chunk_completion_free);
-  g_autoptr(GGMLLanguageModelCompleteMonitorState) monitor_state = ggml_language_model_complete_monitor_state_new (async_queue,
-                                                                                                                   callback,
+  g_autoptr(GGMLLanguageModelCompleteMonitorState) monitor_state = ggml_language_model_complete_monitor_state_new (callback,
                                                                                                                    user_data,
                                                                                                                    user_data_destroy);
 
-  g_idle_add ((GSourceFunc) ggml_language_model_monitor_callback,
-              g_steal_pointer (&monitor_state));
+  GSource *monitor_source = ggml_async_queue_source_new (async_queue,
+                                                         ggml_language_model_monitor_callback,
+                                                         g_steal_pointer (&monitor_state),
+                                                         (GDestroyNotify) ggml_language_model_complete_monitor_state_unref,
+                                                         cancellable);
+  g_source_attach (g_steal_pointer (&monitor_source), NULL);
 
   GGMLLanguageModelCompleteState *state = ggml_language_model_complete_state_new (language_model,
                                                                                   prompt,
