@@ -212,13 +212,22 @@ ggml_cached_model_istream_ensure_stream (GGMLCachedModelIstream     *cached_mode
                                           g_object_unref);
     }
 
-  if (!g_output_stream_splice (G_OUTPUT_STREAM (output_stream),
-                               G_INPUT_STREAM (progress_istream),
-                               G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE |
-                               G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
-                               cancellable,
-                               error))
+  if (g_output_stream_splice (G_OUTPUT_STREAM (output_stream),
+                              G_INPUT_STREAM (progress_istream),
+                              G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE |
+                              G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
+                              cancellable,
+                              error) == -1)
     {
+      /* We send the sentinel value to the progress callback on the error
+       * case too, so that it can clean up */
+      if (priv->progress_callback != NULL)
+        {
+          ggml_cached_model_push_download_progress_to_queue (-1,
+                                                             priv->remote_content_length,
+                                                             cached_model);
+        }
+
       return NULL;
     }
 
