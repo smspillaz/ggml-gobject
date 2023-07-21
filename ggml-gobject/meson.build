@@ -37,11 +37,13 @@ ggml_gobject_toplevel_introspectable_sources = files([
 ])
 ggml_gobject_toplevel_internal_sources = files([
   'internal/ggml-async-queue-source.c',
+  'internal/ggml-progress-istream.c',
   'internal/ggml-stream-internal.c',
 ])
 ggml_gobject_toplevel_internal_headers = files([
   'internal/ggml-async-queue-source.h',
   'internal/ggml-context-internal.h',
+  'internal/ggml-progress-istream.h',
   'internal/ggml-stream-internal.h',
   'internal/ggml-tensor-internal.h',
 ])
