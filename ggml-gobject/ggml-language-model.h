@@ -53,7 +53,10 @@ void ggml_language_model_consume_istream_magic_async (GInputStream         *istr
                                                       gpointer              user_data);
 
 typedef enum {
-  GGML_DEFINED_LANGUAGE_MODEL_GPT2
+  GGML_DEFINED_LANGUAGE_MODEL_GPT2P117M,
+  GGML_DEFINED_LANGUAGE_MODEL_GPT2P345M,
+  GGML_DEFINED_LANGUAGE_MODEL_GPT2P774M,
+  GGML_DEFINED_LANGUAGE_MODEL_GPT2P1558M,
 } GGMLDefinedLanguageModel;
 
 GGMLLanguageModel *ggml_language_model_load_from_istream (GInputStream *istream,
