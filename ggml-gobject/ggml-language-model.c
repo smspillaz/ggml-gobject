@@ -1294,12 +1294,12 @@ static const char *ggml_language_model_urls[] = {
  * @defined_model: A #GGMLDefinedLanguageModel
  * @error: A #GError
  *
- * Creates a new #GFileInputStream which will either download the model upon the first
+ * Creates a new #GGMLCachedModelIstream which will either download the model upon the first
  * read, or return a cached version from the disk.
  *
- * Returns: (transfer full): A #GFileInputStream on success, %NULL with @error set on failure.
+ * Returns: (transfer full): A #GGMLCachedModelIstream on success, %NULL with @error set on failure.
  */
-GFileInputStream *
+GGMLCachedModelIstream *
 ggml_language_model_stream_from_cache (GGMLDefinedLanguageModel   defined_model,
                                        GError                   **error)
 {

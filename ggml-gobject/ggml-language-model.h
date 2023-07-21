@@ -91,8 +91,8 @@ void ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageMod
 GGMLLanguageModel *ggml_language_model_load_defined_from_istream_finish (GAsyncResult  *result,
                                                                          GError       **error);
 
-GFileInputStream *ggml_language_model_stream_from_cache (GGMLDefinedLanguageModel   defined_model,
-                                                         GError                   **error);
+GGMLCachedModelIstream *ggml_language_model_stream_from_cache (GGMLDefinedLanguageModel   defined_model,
+                                                               GError                   **error);
 
 char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
                                      const char         *prompt,
