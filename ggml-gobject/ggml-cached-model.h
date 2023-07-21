@@ -28,6 +28,10 @@ G_BEGIN_DECLS
 #define GGML_TYPE_CACHED_MODEL_ISTREAM (ggml_cached_model_istream_get_type ())
 G_DECLARE_FINAL_TYPE (GGMLCachedModelIstream, ggml_cached_model_istream, GGML, CACHED_MODEL_ISTREAM, GFileInputStream)
 
-GFileInputStream * ggml_cached_model_istream_new (const char *remote_url, const char *local_path);
+GGMLCachedModelIstream * ggml_cached_model_istream_new (const char *remote_url, const char *local_path);
+void ggml_cached_model_istream_set_download_progress_callback (GGMLCachedModelIstream *cached_model,
+                                                               GFileProgressCallback   callback,
+                                                               gpointer                user_data,
+                                                               GDestroyNotify          user_data_destroy);
 
 G_END_DECLS
