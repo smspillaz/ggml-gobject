@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-cached-model.h
+ * ggml-gobject/ggml-progress-istream.h
  *
- * Library code for ggml-cached-model
+ * Library code for ggml-progress-istream
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -25,13 +25,14 @@
 
 G_BEGIN_DECLS
 
-#define GGML_TYPE_CACHED_MODEL_ISTREAM (ggml_cached_model_istream_get_type ())
-G_DECLARE_FINAL_TYPE (GGMLCachedModelIstream, ggml_cached_model_istream, GGML, CACHED_MODEL_ISTREAM, GFileInputStream)
+#define GGML_TYPE_PROGRESS_ISTREAM (ggml_progress_istream_get_type ())
+G_DECLARE_FINAL_TYPE (GGMLProgressIstream, ggml_progress_istream, GGML, PROGRESS_ISTREAM, GFilterInputStream)
 
-GGMLCachedModelIstream * ggml_cached_model_istream_new (const char *remote_url, const char *local_path);
-void ggml_cached_model_istream_set_download_progress_callback (GGMLCachedModelIstream *cached_model,
-                                                               GFileProgressCallback   callback,
-                                                               gpointer                user_data,
-                                                               GDestroyNotify          user_data_destroy);
+GGMLProgressIstream * ggml_progress_istream_new (GInputStream *base_stream,
+                                                 size_t        expected_length);
+void ggml_progress_istream_set_callback (GGMLProgressIstream    *progress_istream,
+                                         GFileProgressCallback   callback,
+                                         gpointer                user_data,
+                                         GDestroyNotify          user_data_destroy);
 
 G_END_DECLS

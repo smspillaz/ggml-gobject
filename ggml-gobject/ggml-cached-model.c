@@ -24,6 +24,8 @@
 #include <gio/gio.h>
 #include <libsoup/soup.h>
 #include <ggml-gobject/ggml-cached-model.h>
+#include <ggml-gobject/internal/ggml-async-queue-source.h>
+#include <ggml-gobject/internal/ggml-progress-istream.h>
 
 struct _GGMLCachedModelIstream
 {
@@ -36,6 +38,11 @@ typedef struct
   size_t remote_content_length;
   char *remote_url;
   char *local_path;
+  uint32_t progress_indicator_source_id;
+  GAsyncQueue *progress_indicator_queue;
+  GFileProgressCallback progress_callback;
+  gpointer progress_callback_data;
+  GDestroyNotify progress_callback_data_destroy;
 } GGMLCachedModelIstreamPrivate;
 
 enum {
@@ -50,10 +57,91 @@ G_DEFINE_TYPE_WITH_CODE (GGMLCachedModelIstream,
                          G_TYPE_FILE_INPUT_STREAM,
                          G_ADD_PRIVATE (GGMLCachedModelIstream))
 
+static gboolean
+ggml_download_progress_async_queue_monitor_callback (gpointer message,
+                                                     gpointer user_data)
+{
+  GGMLCachedModelIstream *cached_model = user_data;
+  GGMLCachedModelIstreamPrivate *priv = ggml_cached_model_istream_get_instance_private (cached_model);
+
+  /* We progress the message by sending it to the progress callback */
+  goffset progressed_bytes = GPOINTER_TO_INT (message);
+
+  /* We unconditionally send to the progress callback, even if it is
+   * the sentinel value - the progress callback has to be able to handle this */
+  (*priv->progress_callback) (progressed_bytes,
+                              (goffset) priv->remote_content_length,
+                              priv->progress_callback_data);
+
+
+  /* Sentinel message */
+  if (progressed_bytes == -1)
+    {
+      return G_SOURCE_REMOVE;
+    }
+
+  return G_SOURCE_CONTINUE;
+}
+
+static void
+ggml_cached_model_push_download_progress_to_queue (goffset progressed_bytes,
+                                                   goffset total_bytes,
+                                                   gpointer user_data)
+{
+  GGMLCachedModelIstream *cached_model = user_data;
+  GGMLCachedModelIstreamPrivate *priv = ggml_cached_model_istream_get_instance_private (cached_model);
+
+  /* Only push a message if one hasn't been consumed yet - otherwise
+   * we run the risk of flooding the main progress */
+  if (g_async_queue_length (priv->progress_indicator_queue) == 0)
+    {
+      g_async_queue_push (priv->progress_indicator_queue, GINT_TO_POINTER (progressed_bytes));
+      g_main_context_wakeup (g_main_context_default ());
+    }
+}
+
+/**
+ * ggml_cached_model_istream_set_download_progress_callback:
+ * @callback: A #GFileProgressCallback with progress about the download operation.
+ * @user_data: (closure callback): A closure for @callback
+ * @user_data_destroy: (destroy callback): A #GDestroyNotify for @callback
+ *
+ * Set a progress-monitor callback for @cached_model, which will be called with
+ * download progress in case a model is being downloaded. The application can use
+ * the callback to update state, for example a progress bar.
+ *
+ * This function should be called from the main thread. It will handle situations where
+ * the download IO operation happens on a separate thread.
+ */
+void
+ggml_cached_model_istream_set_download_progress_callback (GGMLCachedModelIstream *cached_model,
+                                                          GFileProgressCallback   callback,
+                                                          gpointer                user_data,
+                                                          GDestroyNotify          user_data_destroy)
+{
+  GGMLCachedModelIstreamPrivate *priv = ggml_cached_model_istream_get_instance_private (cached_model);
+
+  g_clear_pointer (&priv->progress_callback_data, priv->progress_callback_data_destroy);
+
+  if (priv->progress_indicator_source_id != 0)
+    {
+      g_source_remove (priv->progress_indicator_source_id);
+      priv->progress_indicator_source_id = 0;
+    }
+
+  g_clear_pointer (&priv->progress_indicator_queue, g_async_queue_unref);
+
+  priv->progress_callback = callback;
+  priv->progress_callback_data = user_data;
+  priv->progress_callback_data_destroy = user_data_destroy;
+}
+
 static GFileInputStream *
-ggml_cached_model_istream_ensure_stream (GGMLCachedModelIstream  *cached_model,
-                                         GCancellable            *cancellable,
-                                         GError                 **error)
+ggml_cached_model_istream_ensure_stream (GGMLCachedModelIstream     *cached_model,
+                                         GFileProgressCallback       progress_callback,
+                                         gpointer                    progress_callback_data,
+                                         GCancellable               *cancellable,
+                                         GError                    **error)
 {
   GGMLCachedModelIstreamPrivate *priv = ggml_cached_model_istream_get_instance_private (cached_model);
 
@@ -104,14 +192,51 @@ ggml_cached_model_istream_ensure_stream (GGMLCachedModelIstream  *cached_model,
   SoupMessageHeaders *response_headers = soup_message_get_response_headers (message);
   priv->remote_content_length = soup_message_headers_get_content_length (response_headers);
 
-  if (!g_output_stream_splice (G_OUTPUT_STREAM (output_stream),
-                               in_stream,
-                               G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE |
-                               G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
-                               cancellable,
-                               error))
+  g_autoptr(GGMLProgressIstream) progress_istream = ggml_progress_istream_new (in_stream,
+                                                                               priv->remote_content_length);
+
+  if (priv->progress_callback != NULL)
     {
+      priv->progress_indicator_queue = g_async_queue_new ();
+
+      GSource *monitor_source = ggml_async_queue_source_new (priv->progress_indicator_queue,
+                                                             ggml_download_progress_async_queue_monitor_callback,
+                                                             g_object_ref (cached_model),
+                                                             (GDestroyNotify) g_object_unref,
+                                                             cancellable);
+      g_source_attach (g_steal_pointer (&monitor_source), NULL);
+
+      ggml_progress_istream_set_callback (progress_istream,
+                                          ggml_cached_model_push_download_progress_to_queue,
+                                          g_object_ref (cached_model),
+                                          g_object_unref);
+    }
+
+  if (g_output_stream_splice (G_OUTPUT_STREAM (output_stream),
+                              G_INPUT_STREAM (progress_istream),
+                              G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE |
+                              G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
+                              cancellable,
+                              error) == -1)
+    {
+      /* We send the sentinel value to the progress callback on the error
+       * case too, so that it can clean up */
+      if (priv->progress_callback != NULL)
+        {
+          ggml_cached_model_push_download_progress_to_queue (-1,
+                                                             priv->remote_content_length,
+                                                             cached_model);
+        }
+
       return NULL;
+    }
+
+  /* Once we're done, send the sentinel message to the queue */
+  if (priv->progress_callback != NULL)
+    {
+      ggml_cached_model_push_download_progress_to_queue (-1,
+                                                         priv->remote_content_length,
+                                                         cached_model);
     }
 
   /* After that, we have to move the temporary file into the right place. */
@@ -139,7 +264,31 @@ ggml_cached_model_istream_ensure_stream (GGMLCachedModelIstream  *cached_model,
     }
 
   /* We call the same function again, now that the cached file is in place. */
-  return ggml_cached_model_istream_ensure_stream (cached_model, cancellable, error);
+  return ggml_cached_model_istream_ensure_stream (cached_model,
+                                                  progress_callback,
+                                                  progress_callback_data,
+                                                  cancellable,
+                                                  error);
+}
+
+static void
+ggml_cached_model_istream_dispose (GObject *object)
+{
+  GGMLCachedModelIstream *cached_model = GGML_CACHED_MODEL_ISTREAM (object);
+  GGMLCachedModelIstreamPrivate *priv = ggml_cached_model_istream_get_instance_private (cached_model);
+
+
+  g_clear_pointer (&priv->progress_indicator_queue, g_async_queue_unref);
+  g_clear_pointer (&priv->progress_callback_data, priv->progress_callback_data_destroy);
+
+  /* If for some reason the source is still there, drop it */
+  if (priv->progress_indicator_source_id != 0)
+    {
+      g_source_remove (priv->progress_indicator_source_id);
+      priv->progress_indicator_source_id = 0;
+    }
+
+  G_OBJECT_CLASS (ggml_cached_model_istream_parent_class)->finalize (object);
 }
 
 static void
@@ -152,12 +301,6 @@ ggml_cached_model_istream_finalize (GObject *object)
   g_clear_pointer (&priv->remote_url, g_free);
 
   G_OBJECT_CLASS (ggml_cached_model_istream_parent_class)->finalize (object);
-}
-
-static void
-ggml_cached_model_istream_dispose (GObject *object)
-{
-  G_OBJECT_CLASS (ggml_cached_model_istream_parent_class)->dispose (object);
 }
 
 static void
@@ -220,7 +363,11 @@ ggml_cached_model_istream_read_fn (GInputStream  *stream,
 
   if (priv->current_stream == NULL)
     {
-      priv->current_stream = ggml_cached_model_istream_ensure_stream (cached_model, cancellable, error);
+      priv->current_stream = ggml_cached_model_istream_ensure_stream (cached_model,
+                                                                      priv->progress_callback,
+                                                                      priv->progress_callback_data,
+                                                                      cancellable,
+                                                                      error);
 
       if (priv->current_stream == NULL)
         {
@@ -242,7 +389,11 @@ ggml_cached_model_istream_skip (GInputStream  *stream,
 
   if (priv->current_stream == NULL)
     {
-      priv->current_stream = ggml_cached_model_istream_ensure_stream (cached_model, cancellable, error);
+      priv->current_stream = ggml_cached_model_istream_ensure_stream (cached_model,
+                                                                      priv->progress_callback,
+                                                                      priv->progress_callback_data,
+                                                                      cancellable,
+                                                                      error);
 
       if (priv->current_stream == NULL)
         {
@@ -304,7 +455,11 @@ ggml_cached_model_istream_query_info (GFileInputStream  *stream,
    * but that's the only way to get what the user is asking for. */
   if (priv->current_stream == NULL)
     {
-      priv->current_stream = ggml_cached_model_istream_ensure_stream (cached_model, cancellable, error);
+      priv->current_stream = ggml_cached_model_istream_ensure_stream (cached_model,
+                                                                      priv->progress_callback,
+                                                                      priv->progress_callback_data,
+                                                                      cancellable,
+                                                                      error);
 
       if (priv->current_stream == NULL)
         {
@@ -364,12 +519,12 @@ ggml_cached_model_istream_class_init (GGMLCachedModelIstreamClass *klass)
                                                         G_PARAM_CONSTRUCT));
 }
 
-GFileInputStream *
+GGMLCachedModelIstream *
 ggml_cached_model_istream_new (const char *remote_url,
                                const char *local_path)
 {
-  return G_FILE_INPUT_STREAM (g_object_new (GGML_TYPE_CACHED_MODEL_ISTREAM,
-                                            "remote-url", remote_url,
-                                            "local-path", local_path,
-                                            NULL));
+  return GGML_CACHED_MODEL_ISTREAM (g_object_new (GGML_TYPE_CACHED_MODEL_ISTREAM,
+                                                  "remote-url", remote_url,
+                                                  "local-path", local_path,
+                                                  NULL));
 }

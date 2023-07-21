@@ -6,22 +6,43 @@
     <property name="default-height">480</property>
     <property name="default-width">640</property>
     <child>
-      <object class="GtkBox">
-        <property name="visible">True</property>
-        <property name="orientation">vertical</property>
+      <object class="GtkOverlay">
+        <property name="visible">true</property>
         <child>
-          <object class="GtkScrolledWindow" id="content-view">
+          <object class="GtkBox">
             <property name="visible">true</property>
-            <property name="hexpand">true</property>
-            <property name="vexpand">true</property>
-            <property name="valign">fill</property>
+            <property name="orientation">vertical</property>
             <child>
-              <object class="GtkTextView" id="text-view">
+              <object class="GtkScrolledWindow" id="content-view">
                 <property name="visible">true</property>
                 <property name="hexpand">true</property>
                 <property name="vexpand">true</property>
                 <property name="valign">fill</property>
-                <property name="wrap-mode">word</property>
+                <child>
+                  <object class="GtkTextView" id="text-view">
+                    <property name="visible">true</property>
+                    <property name="hexpand">true</property>
+                    <property name="vexpand">true</property>
+                    <property name="valign">fill</property>
+                    <property name="wrap-mode">word</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="overlay">
+          <object class="GtkBox">
+            <property name="visible">true</property>
+            <property name="hexpand">true</property>
+            <property name="halign">end</property>
+            <property name="valign">end</property>
+            <child>
+              <object class="GtkProgressBar" id="progress-bar">
+                <property name="visible">false</property>
+                <property name="fraction">0.0</property>
+                <property name="text">Starting Download</property>
+                <property name="show-text">true</property>
               </object>
             </child>
           </object>

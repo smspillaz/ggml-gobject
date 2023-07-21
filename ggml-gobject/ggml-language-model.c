@@ -945,7 +945,22 @@ static struct GGMLLanguageModelDefinitions {
   GGMLModelDescFromHyperparametersFunc model_desc_from_hyperparameters_func;
   GGMLModelForwardFunc forward_func;
 } ggml_language_model_definitions[] = {
-  /* GGML_DEFINED_MODEL_GPT2 */
+  /* GGML_DEFINED_MODEL_GPT2P117M */
+  {
+    .model_desc_from_hyperparameters_func = (GGMLModelDescFromHyperparametersFunc) ggml_create_gpt2_model_desc_from_hyperparameters,
+    .forward_func = ggml_gpt_model_forward_pass
+  },
+  /* GGML_DEFINED_MODEL_GPT2P345M */
+  {
+    .model_desc_from_hyperparameters_func = (GGMLModelDescFromHyperparametersFunc) ggml_create_gpt2_model_desc_from_hyperparameters,
+    .forward_func = ggml_gpt_model_forward_pass
+  },
+  /* GGML_DEFINED_MODEL_GPT2P774M */
+  {
+    .model_desc_from_hyperparameters_func = (GGMLModelDescFromHyperparametersFunc) ggml_create_gpt2_model_desc_from_hyperparameters,
+    .forward_func = ggml_gpt_model_forward_pass
+  },
+  /* GGML_DEFINED_MODEL_GPT2P1558M */
   {
     .model_desc_from_hyperparameters_func = (GGMLModelDescFromHyperparametersFunc) ggml_create_gpt2_model_desc_from_hyperparameters,
     .forward_func = ggml_gpt_model_forward_pass
@@ -1284,7 +1299,10 @@ ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageModel   
 }
 
 static const char *ggml_language_model_urls[] = {
-  "https://huggingface.co/ggerganov/ggml/resolve/main/ggml-model-gpt-2-117M.bin"
+  "https://huggingface.co/ggerganov/ggml/resolve/main/ggml-model-gpt-2-117M.bin",
+  "https://huggingface.co/ggerganov/ggml/resolve/main/ggml-model-gpt-2-345M.bin",
+  "https://huggingface.co/ggerganov/ggml/resolve/main/ggml-model-gpt-2-774M.bin",
+  "https://huggingface.co/ggerganov/ggml/resolve/main/ggml-model-gpt-2-1558M.bin"
 };
 
 #define GGML_GOBJECT_MODELS_VERSION "0"
@@ -1294,12 +1312,12 @@ static const char *ggml_language_model_urls[] = {
  * @defined_model: A #GGMLDefinedLanguageModel
  * @error: A #GError
  *
- * Creates a new #GFileInputStream which will either download the model upon the first
+ * Creates a new #GGMLCachedModelIstream which will either download the model upon the first
  * read, or return a cached version from the disk.
  *
- * Returns: (transfer full): A #GFileInputStream on success, %NULL with @error set on failure.
+ * Returns: (transfer full): A #GGMLCachedModelIstream on success, %NULL with @error set on failure.
  */
-GFileInputStream *
+GGMLCachedModelIstream *
 ggml_language_model_stream_from_cache (GGMLDefinedLanguageModel   defined_model,
                                        GError                   **error)
 {
