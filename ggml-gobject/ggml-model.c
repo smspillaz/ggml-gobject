@@ -89,7 +89,8 @@ ggml_model_new_from_flattened_desc (GGMLContext *context,
   return model;
 }
 
-static inline int32_t product_i32 (int32_t *array, size_t n)
+static inline int32_t
+product_i32 (int32_t *array, size_t n)
 {
   int32_t product = 1;
   for (size_t i = 0; i < n; ++i)
