@@ -208,45 +208,55 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
 }
 
 static size_t
-ggml_estimate_transformer_model_memory (int32_t n_vocab, int32_t n_embd, int32_t n_head, int32_t n_layer, int32_t n_ctx, int32_t ftype)
+ggml_estimate_tensor_size_for_type (GGMLDataType  data_type,
+                                    int64_t      *shape,
+                                    size_t        n_shape)
 {
-  const int32_t head_dim = n_embd / n_head;
-  const int32_t kv_heads = n_head;
-  const int32_t kv_dim = kv_heads * head_dim;
-  enum ggml_type wtype = ggml_ftype_to_ggml_type((enum ggml_ftype) (ftype));
-  size_t ctx_size = 0;
+  size_t nb[GGML_MAX_DIMS];
+  size_t ne[GGML_MAX_DIMS];
+  size_t blk_size = ggml_blck_size (data_type);
 
-  ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // ln_f_g
-  ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // ln_f_b
+  /* The true size is the stride at the final shape index * number
+   * of elements (eg, how do we get from the beginning to the end
+   * of the tensor on the outer dimension */
+  nb[0] = ggml_type_size (data_type);
+  ne[0] = shape[0];
+  nb[1] = nb[0] * (ne[0] / blk_size);
+  ne[1] = (n_shape > 1) ? shape[1] : 1;
 
-  ctx_size += n_vocab * n_embd * ggml_type_sizef(wtype);         // wte
-  ctx_size +=   n_ctx * n_embd * ggml_type_sizef(GGML_TYPE_F32); // wpe
-  ctx_size += n_vocab * n_embd * ggml_type_sizef(wtype);         // lm_head
+  for (size_t i = 2; i < GGML_MAX_DIMS; ++i)
+    {
+      ne[i] = (i < n_shape) ? shape[i] : 1;
+      nb[i] = ne[i - 1] * nb[i - 1];
+    }
 
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_1_g
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_1_b
+  return ne[GGML_MAX_DIMS - 1] * nb[GGML_MAX_DIMS - 1];
+}
 
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_2_g
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_2_b
+static size_t
+ggml_estimate_model_size_from_flattened_desc (GHashTable *flattened_desc)
+{
+  gpointer key, value;
+  GHashTableIter iter;
 
-  ctx_size += n_layer * ((n_embd + 2 * kv_dim) * n_embd * 3 * ggml_type_sizef(wtype));         // c_attn_attn_w // TODO:
-  ctx_size += n_layer * (       (n_embd + 2 * kv_dim) * 3 * ggml_type_sizef(GGML_TYPE_F32)); // c_attn_attn_b
+  size_t computed_size = 0;
+  size_t overhead = ggml_tensor_overhead ();
 
-  ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(wtype));           // c_attn_proj_w
-  ctx_size += n_layer * (       n_embd * ggml_type_sizef(GGML_TYPE_F32));   // c_attn_proj_b
+  g_hash_table_iter_init (&iter, flattened_desc);
+  while (g_hash_table_iter_next (&iter, &key, &value))
+    {
+      GGMLModelDescLeaf *leaf = value;
 
-  ctx_size += n_layer * (4 * n_embd * n_embd * ggml_type_sizef(wtype));         // c_mlp_fc_w
-  ctx_size += n_layer * (       4 * n_embd * ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_fc_b
+      size_t n_dims = leaf->n_dim;
+      int64_t *shape = leaf->dimensions;
 
-  ctx_size += n_layer * (4 * n_embd *n_embd * ggml_type_sizef(wtype));         // c_mlp_proj_w
-  ctx_size += n_layer * (         n_embd * ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_proj_b
+      /* Here we will quantize, so estimate the size of the quantized tensor */
+      computed_size += ggml_estimate_tensor_size_for_type (leaf->type,
+                                                           shape,
+                                                           n_dims) + overhead;
+    }
 
-  ctx_size += n_ctx*n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_k
-  ctx_size += n_ctx*n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_v
-
-  ctx_size += (6 + 12 * n_layer) * 512; // object overhead
-
-  return ctx_size;
+  return computed_size;
 }
 
 /**
@@ -275,16 +285,9 @@ ggml_model_load_from_istream (GInputStream                           *istream,
                               GCancellable                           *cancellable,
                               GError                                **error)
 {
-  const int32_t n_embd = ggml_hyperparameters_get_int32 (hyperparameters, "n_embd");
-  const int32_t n_layer = ggml_hyperparameters_get_int32 (hyperparameters, "n_layer");
-  const int32_t n_ctx = ggml_hyperparameters_get_int32 (hyperparameters, "n_ctx");
-  const int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
-  const int32_t n_head = ggml_hyperparameters_get_int32 (hyperparameters, "n_head");
-  const int32_t ftype = ggml_hyperparameters_get_int32 (hyperparameters, "ftype");
-
-  size_t memory_size = ggml_estimate_transformer_model_memory (n_vocab, n_embd, n_head, n_layer, n_ctx, ftype);
-  g_autoptr (GGMLContext) context = ggml_context_new (memory_size);
   g_autoptr (GHashTable) flattened_desc = ggml_model_desc_node_flatten (model_desc_node);
+  size_t memory_size = ggml_estimate_model_size_from_flattened_desc (flattened_desc);
+  g_autoptr (GGMLContext) context = ggml_context_new (memory_size);
   g_autoptr (GGMLModel) model = ggml_model_new_from_flattened_desc (context,
                                                                     flattened_desc,
                                                                     forward_func,
