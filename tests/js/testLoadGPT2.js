@@ -543,4 +543,23 @@ describe('GGML GPT2', function() {
       ['The meaning of life is: to live in a world of abundance', false]
     );
   });
+  it('can do a forward pass through a quantized model', function() {
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
+    const config = GGML.ModelConfig.new();
+
+    config.set_quantization_config(GGML.DataType.Q8_0,
+                                   GGML.gpt_model_quantization_regexes(),
+                                   null);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2P177M,
+      istream,
+      config,
+      null
+    );
+
+    expect(language_model.complete('The meaning of life is:', 7, null)).toEqual(
+      ['The meaning of life is: to live in a state of being', false]
+    );
+  });
 })
