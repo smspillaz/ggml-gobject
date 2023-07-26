@@ -181,7 +181,7 @@ ggml_tensor_n_bytes (GGMLTensor *tensor)
  * @size: The number of bytes to read
  *
  * Sets the data of the tensor. It is the caller's responsibility to
- * pass a buffer of the correct size.
+ * pass a buffer of the correct size and stride.
  */
 void
 ggml_tensor_set_data (GGMLTensor *tensor, char *data, size_t size)
