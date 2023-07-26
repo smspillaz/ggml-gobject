@@ -281,6 +281,18 @@ ggml_tensor_get_name (GGMLTensor *tensor)
 }
 
 /**
+ * ggml_tensor_get_data_type:
+ * @tensor: A #GGMLTensor
+ *
+ * Returns: A #GGMLDataType which is the data type of this tensor
+ */
+GGMLDataType
+ggml_tensor_get_data_type (GGMLTensor *tensor)
+{
+  return (GGMLDataType) tensor->tensor->type;
+}
+
+/**
  * ggml_tensor_get_shape:
  * @tensor: A #GGMLTensor
  * @out_n_dims: (out): Number of dimensions
