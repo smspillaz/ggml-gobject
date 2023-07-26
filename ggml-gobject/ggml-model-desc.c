@@ -181,6 +181,79 @@ ggml_model_node_flatten_recurse (GHashTable *table, GGMLModelDescNode *current_n
     }
 }
 
+GGMLModelDescNode *
+ggml_model_desc_map_recurse (GGMLModelDescNode    *current_node,
+                             GGMLModelDescMapFunc  map_func,
+                             gpointer              map_user_data,
+                             const char           *path)
+{
+  g_autoptr(GGMLModelDescLeaf) mapped_leaf = NULL;
+
+  if (current_node->leaf != NULL)
+    {
+      mapped_leaf = map_func (path,
+                              current_node->leaf,
+                              map_user_data);
+    }
+
+  g_autoptr(GHashTable) mapped_children = NULL;
+
+  if (current_node->children)
+    {
+      GHashTableIter iter;
+      gpointer key, value;
+
+      mapped_children = g_hash_table_new_full (g_str_hash,
+                                               g_str_equal,
+                                               g_free,
+                                               (GDestroyNotify) ggml_model_desc_node_unref);
+
+      g_hash_table_iter_init (&iter, current_node->children);
+      while (g_hash_table_iter_next (&iter, &key, &value))
+        {
+          const char *key_str = key;
+          GGMLModelDescNode *child = value;
+
+          g_autofree char *child_path = (path == NULL ?
+                                         g_strdup(key) :
+                                         g_strjoin("/", path, (const gchar *) key, NULL));
+
+          GGMLModelDescNode *new_child = ggml_model_desc_map_recurse (child,
+                                                                      map_func,
+                                                                      map_user_data,
+                                                                      child_path);
+
+          g_hash_table_insert (mapped_children, g_strdup (key_str), g_steal_pointer (&new_child));
+        }
+    }
+
+  return ggml_model_desc_node_new (g_steal_pointer (&mapped_leaf),
+                                   g_steal_pointer (&mapped_children));
+}
+
+/**
+ * ggml_model_desc_map:
+ * @model_desc: A #GGMLModelDescNode to apply @map_func to
+ * @map_func: (scope call): A #GGMLModelDescMapFunc
+ * @map_user_data: (closure map_func): User data for @map_func
+ *
+ * Map @model_desc and return a new #GGMLModelDescNode tree with
+ * the @map_func applied to each leaf. The @map_func must return a
+ * new #GGMLModelDescLeaf for each leaf.
+ *
+ * Returns: (transfer full): A new #GGMLModelDescNode transformed by @map_func.
+ */
+GGMLModelDescNode *
+ggml_model_desc_map (GGMLModelDescNode    *model_desc,
+                     GGMLModelDescMapFunc  map_func,
+                     gpointer              map_user_data)
+{
+  return ggml_model_desc_map_recurse (model_desc,
+                                      map_func,
+                                      map_user_data,
+                                      NULL);
+}
+
 /**
  * ggml_model_desc_node_flatten:
  * @node: A #GGMLModelDescNode to flatten

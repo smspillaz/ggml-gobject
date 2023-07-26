@@ -74,6 +74,21 @@ GGMLModelDescNode *ggml_model_desc_node_new_leaf (int64_t *dimensions,
                                                   GGMLDataType type);
 GGMLModelDescNode *ggml_model_desc_node_ref (GGMLModelDescNode *node);
 GHashTable *ggml_model_desc_node_flatten (GGMLModelDescNode *node);
+
+/**
+ * GGMLModelDescMapFunc:
+ * @path: The key for the current weight
+ * @leaf: (transfer none): A #GGMLModelDescLeaf
+ *
+ * Returns: (transfer full): A new #GGMLModelDescLeaf with the mapped leaf node.
+ */
+typedef GGMLModelDescLeaf * (*GGMLModelDescMapFunc) (const char               *path,
+                                                     const GGMLModelDescLeaf  *leaf,
+                                                     gpointer                  user_data);
+
+GGMLModelDescNode *ggml_model_desc_map (GGMLModelDescNode    *model_desc,
+                                        GGMLModelDescMapFunc  map_func,
+                                        gpointer              map_user_data);
 void ggml_model_desc_node_unref (GGMLModelDescNode *node);
 
 /**
