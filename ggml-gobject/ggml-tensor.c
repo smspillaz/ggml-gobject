@@ -186,6 +186,7 @@ ggml_tensor_n_bytes (GGMLTensor *tensor)
 void
 ggml_tensor_set_data (GGMLTensor *tensor, char *data, size_t size)
 {
+  g_assert (size <= ggml_tensor_n_bytes (tensor));
   memcpy(tensor->tensor->data, (const void *) data, size);
 }
 
