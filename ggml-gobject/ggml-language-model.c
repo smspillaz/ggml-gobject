@@ -23,6 +23,7 @@
 #include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-gpt.h>
 #include <ggml-gobject/ggml-language-model.h>
+#include <ggml-gobject/ggml-quantize.h>
 #include <ggml-gobject/internal/ggml-async-queue-source.h>
 #include <ggml-gobject/internal/ggml-stream-internal.h>
 
@@ -907,6 +908,29 @@ ggml_language_model_load_from_istream (GInputStream *istream,
     }
 
   g_autoptr (GGMLModelDescNode) model_desc_node = (*create_model_desc) (hyperparameters, create_model_desc_user_data);
+
+  GGMLDataType quantized_type;
+  const char **quantize_regexes = NULL;
+  const char **skip_quantize_regexes = NULL;
+  gboolean should_quantize = ggml_model_config_get_quantization_config (model_config,
+                                                                        &quantized_type,
+                                                                        &quantize_regexes,
+                                                                        &skip_quantize_regexes);
+
+  g_autoptr(GGMLModelDescNode) postprocessed_model_desc_node = (
+    should_quantize ? ggml_configure_quantized_model_desc_by_regexes (model_desc_node,
+                                                                      quantized_type,
+                                                                      quantize_regexes,
+                                                                      skip_quantize_regexes,
+                                                                      error) :
+                      ggml_model_desc_node_ref (model_desc_node)
+  );
+
+  if (postprocessed_model_desc_node == NULL)
+    {
+      return NULL;
+    }
+
   int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
   g_autoptr(GGMLTokenDictionary) token_dictionary = ggml_token_dictionary_load_from_istream (istream,
                                                                                              n_vocab,
@@ -920,7 +944,7 @@ ggml_language_model_load_from_istream (GInputStream *istream,
 
   g_auto(GStrv) loaded_keys = NULL;
   g_autoptr(GGMLModel) model = ggml_model_load_from_istream (istream,
-                                                             model_desc_node,
+                                                             postprocessed_model_desc_node,
                                                              hyperparameters,
                                                              forward_func,
                                                              forward_func_user_data,
