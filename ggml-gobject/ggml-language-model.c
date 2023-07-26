@@ -869,6 +869,7 @@ ggml_model_set_possible_tied_weights (GGMLModel *model,
 /**
  * ggml_language_model_load_from_istream:
  * @istream: (transfer none): A #GInputStream
+ * @model_config: (nullable): A #GGMLModelConfig
  * @create_model_desc: (transfer none) (scope call): A #GGMLModelDescFromHyperparametersFunc to specify the model structure and weights
  * @create_model_desc_user_data: (closure create_model_desc): A closure for @create_model_desc
  * @forward_func: (scope notified) (nullable): A #GGMLModelFowardFunc
@@ -884,6 +885,7 @@ ggml_model_set_possible_tied_weights (GGMLModel *model,
  */
 GGMLLanguageModel *
 ggml_language_model_load_from_istream (GInputStream *istream,
+                                       GGMLModelConfig *model_config,
                                        GGMLModelDescFromHyperparametersFunc create_model_desc,
                                        gpointer create_model_desc_user_data,
                                        GGMLModelForwardFunc forward_func,
@@ -971,6 +973,7 @@ static struct GGMLLanguageModelDefinitions {
  * ggml_language_model_load_defined_from_istream:
  * @model: A #GGMLDefinedLanguageModel configuration to load
  * @istream: (transfer none): A #GInputStream
+ * @model_config: (transfer none) (nullable): A #GGMLModelConfig
  * @cancellable: (transfer none): A #GCancellable
  * @error: A #GError
  *
@@ -985,10 +988,12 @@ static struct GGMLLanguageModelDefinitions {
 GGMLLanguageModel *
 ggml_language_model_load_defined_from_istream (GGMLDefinedLanguageModel    model,
                                                GInputStream               *istream,
+                                               GGMLModelConfig            *model_config,
                                                GCancellable               *cancellable,
                                                GError                    **error)
 {
   return ggml_language_model_load_from_istream (istream,
+                                                model_config,
                                                 ggml_language_model_definitions[model].model_desc_from_hyperparameters_func,
                                                 NULL,
                                                 ggml_language_model_definitions[model].forward_func,
@@ -1001,6 +1006,7 @@ ggml_language_model_load_defined_from_istream (GGMLDefinedLanguageModel    model
 typedef struct _GGMLLanguageModelLoadFromIstreamData
 {
   GInputStream *istream;
+  GGMLModelConfig *config;
   GGMLModelDescFromHyperparametersFunc create_model_desc;
   gpointer create_model_desc_user_data;
   GDestroyNotify create_model_desc_user_data_destroy;
@@ -1017,6 +1023,7 @@ typedef struct _GGMLLanguageModelLoadFromIstreamData
 
 static GGMLLanguageModelLoadFromIstreamData *
 ggml_language_model_load_from_istream_data_new (GInputStream *istream,
+                                                GGMLModelConfig *config,
                                                 GGMLModelDescFromHyperparametersFunc create_model_desc,
                                                 gpointer create_model_desc_user_data,
                                                 GDestroyNotify create_model_desc_user_data_destroy,
@@ -1027,6 +1034,7 @@ ggml_language_model_load_from_istream_data_new (GInputStream *istream,
   GGMLLanguageModelLoadFromIstreamData *data = g_new0 (GGMLLanguageModelLoadFromIstreamData, 1);
 
   data->istream = g_object_ref (istream);
+  data->config = config != NULL ? ggml_model_config_ref (config) : NULL;
   data->create_model_desc = create_model_desc;
   data->create_model_desc_user_data = create_model_desc_user_data;
   data->create_model_desc_user_data_destroy = create_model_desc_user_data_destroy;
@@ -1041,6 +1049,7 @@ void
 ggml_language_model_load_from_istream_data_free (GGMLLanguageModelLoadFromIstreamData *data)
 {
   g_clear_pointer (&data->istream, g_object_unref);
+  g_clear_pointer (&data->config, ggml_model_config_unref);
   g_clear_pointer (&data->create_model_desc_user_data, data->create_model_desc_user_data_destroy);
   g_clear_pointer (&data->forward_func_user_data, data->forward_func_user_data_destroy);
 
@@ -1181,6 +1190,7 @@ ggml_language_model_load_from_istream_on_magic_read (GObject *src,
 /**
  * ggml_language_model_load_from_istream_async:
  * @istream: (transfer none): A #GInputStream
+ * @model_config: (nullable): A #GGMLModelConfig
  * @create_model_desc: (transfer none) (scope call): A #GGMLModelDescFromHyperparametersFunc to specify the model structure and weights
  * @create_model_desc_user_data: (closure create_model_desc): A closure for @create_model_desc
  * @create_model_desc_user_data_destroy: (destroy create_model_desc): A #GDestroyNotify for create_model_desc
@@ -1197,6 +1207,7 @@ ggml_language_model_load_from_istream_on_magic_read (GObject *src,
  */
 void
 ggml_language_model_load_from_istream_async (GInputStream *istream,
+                                             GGMLModelConfig *model_config,
                                              GGMLModelDescFromHyperparametersFunc create_model_desc,
                                              gpointer create_model_desc_user_data,
                                              GDestroyNotify create_model_desc_user_data_destroy,
@@ -1208,6 +1219,7 @@ ggml_language_model_load_from_istream_async (GInputStream *istream,
                                              gpointer user_data)
 {
   g_autoptr(GGMLLanguageModelLoadFromIstreamData) data = ggml_language_model_load_from_istream_data_new(istream,
+                                                                                                        model_config,
                                                                                                         create_model_desc,
                                                                                                         create_model_desc_user_data,
                                                                                                         create_model_desc_user_data_destroy,
@@ -1268,6 +1280,7 @@ ggml_language_model_load_defined_from_istream_finish (GAsyncResult  *result,
  * ggml_language_model_load_defined_from_istream_async:
  * @model: A #GGMLDefinedLanguageModel configuration to load
  * @istream: (transfer none): A #GInputStream
+ * @model_config: (nullable): A #GGMLModelConfig
  * @cancellable: (transfer none) (nullable): A #GCancellable
  * @callback: A #GAsyncReadyCallback to be called when loading is complete.
  * @user_data: (closure callback): Some user data for @callback
@@ -1281,12 +1294,14 @@ ggml_language_model_load_defined_from_istream_finish (GAsyncResult  *result,
 void
 ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageModel   model,
                                                      GInputStream              *istream,
+                                                     GGMLModelConfig           *model_config,
                                                      GCancellable              *cancellable,
                                                      GAsyncReadyCallback        callback,
                                                      gpointer                   user_data,
                                                      GError                   **error)
 {
   ggml_language_model_load_from_istream_async (istream,
+                                               model_config,
                                                ggml_language_model_definitions[model].model_desc_from_hyperparameters_func,
                                                NULL,
                                                NULL,

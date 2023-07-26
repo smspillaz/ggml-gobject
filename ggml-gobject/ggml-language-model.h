@@ -25,6 +25,7 @@
 #include <glib-object.h>
 #include <gio/gio.h>
 #include <ggml-gobject/ggml-hyperparameters.h>
+#include <ggml-gobject/ggml-model-config.h>
 #include <ggml-gobject/ggml-model.h>
 #include <ggml-gobject/ggml-token-dictionary.h>
 
@@ -60,6 +61,7 @@ typedef enum {
 } GGMLDefinedLanguageModel;
 
 GGMLLanguageModel *ggml_language_model_load_from_istream (GInputStream *istream,
+                                                          GGMLModelConfig *model_config,
                                                           GGMLModelDescFromHyperparametersFunc create_model_desc,
                                                           gpointer create_model_desc_user_data,
                                                           GGMLModelForwardFunc forward_func,
@@ -69,6 +71,7 @@ GGMLLanguageModel *ggml_language_model_load_from_istream (GInputStream *istream,
                                                           GError **error);
 
 void ggml_language_model_load_from_istream_async (GInputStream *istream,
+                                                  GGMLModelConfig *model_config,
                                                   GGMLModelDescFromHyperparametersFunc create_model_desc,
                                                   gpointer create_model_desc_user_data,
                                                   GDestroyNotify create_model_desc_user_data_destroy,
@@ -83,10 +86,12 @@ GGMLLanguageModel * ggml_language_model_load_from_istream_finish (GAsyncResult  
 
 GGMLLanguageModel *ggml_language_model_load_defined_from_istream (GGMLDefinedLanguageModel   model,
                                                                   GInputStream              *istream,
+                                                                  GGMLModelConfig           *model_config,
                                                                   GCancellable              *cancellable,
                                                                   GError                   **error);
 void ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageModel   model,
                                                           GInputStream              *istream,
+                                                          GGMLModelConfig           *model_config,
                                                           GCancellable              *cancellable,
                                                           GAsyncReadyCallback        callback,
                                                           gpointer                   user_data,

@@ -375,6 +375,7 @@ describe('GGML GPT2', function() {
 
     const language_model = GGML.LanguageModel.load_from_istream(
       istream,
+      null,
       (hyperparameters) => createModelDescGPT2(
         hyperparameters.get_int32('n_vocab'),
         hyperparameters.get_int32('n_embd'),
@@ -391,6 +392,7 @@ describe('GGML GPT2', function() {
 
     GGML.LanguageModel.load_from_istream_async(
       istream,
+      null,
       (hyperparameters) => createModelDescGPT2(
         hyperparameters.get_int32('n_vocab'),
         hyperparameters.get_int32('n_embd'),
@@ -413,6 +415,7 @@ describe('GGML GPT2', function() {
       GGML.DefinedLanguageModel.GPT2P177M,
       istream,
       null,
+      null,
       (src, res) => {
         GGML.LanguageModel.load_defined_from_istream_finish (res);
         done();
@@ -425,6 +428,7 @@ describe('GGML GPT2', function() {
     const language_model = GGML.LanguageModel.load_defined_from_istream(
       GGML.DefinedLanguageModel.GPT2P177M,
       istream,
+      null,
       null
     );
 
@@ -438,6 +442,7 @@ describe('GGML GPT2', function() {
     const language_model = GGML.LanguageModel.load_defined_from_istream(
       GGML.DefinedLanguageModel.GPT2P177M,
       istream,
+      null,
       null
     );
 
@@ -453,6 +458,7 @@ describe('GGML GPT2', function() {
     const language_model = GGML.LanguageModel.load_defined_from_istream(
       GGML.DefinedLanguageModel.GPT2P177M,
       istream,
+      null,
       null
     );
 
@@ -483,6 +489,7 @@ describe('GGML GPT2', function() {
     const language_model = GGML.LanguageModel.load_defined_from_istream(
       GGML.DefinedLanguageModel.GPT2P177M,
       istream,
+      null,
       null
     );
 
@@ -516,6 +523,7 @@ describe('GGML GPT2', function() {
 
     const language_model = GGML.LanguageModel.load_from_istream(
       istream,
+      null,
       (hyperparameters) => createModelDescGPT2(
         hyperparameters.get_int32('n_vocab'),
         hyperparameters.get_int32('n_embd'),
