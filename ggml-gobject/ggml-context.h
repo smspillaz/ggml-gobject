@@ -37,6 +37,10 @@ GGMLContext *ggml_context_new_from_mem_buffer (GBytes *mem_buffer);
 GGMLContext *ggml_context_new (size_t memory_size);
 GGMLContext *ggml_context_ref (GGMLContext *context);
 void ggml_context_unref (GGMLContext *context);
+GGMLTensor *ggml_context_new_tensor (GGMLContext  *context,
+                                     GGMLDataType  data_type,
+                                     int64_t      *shape,
+                                     size_t        n_dims);
 GGMLTensor *ggml_context_new_tensor_1d (GGMLContext *context,
                                         GGMLDataType data_type, size_t size);
 GGMLTensor *ggml_context_new_tensor_2d (GGMLContext *context,

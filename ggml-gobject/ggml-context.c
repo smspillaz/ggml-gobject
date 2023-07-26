@@ -112,6 +112,27 @@ ggml_context_unref (GGMLContext *context)
 }
 
 /**
+ * ggml_context_new_tensor:
+ * @context: A #GGMLContext
+ * @data_type: A #GGMLDataType for the new tensor
+ * @shape: (array length=n_dims): Shape of the tensor
+ * @n_dims: Number of dimensions in the tensor shape
+ *
+ * Creates a new #GGMLTensor from the memory pool of @context
+ * with shape @shape
+ *
+ * Returns: (transfer full): The #GGMLTensor
+ */
+GGMLTensor *
+ggml_context_new_tensor (GGMLContext  *context,
+                         GGMLDataType  data_type,
+                         int64_t      *shape,
+                         size_t        n_dims)
+{
+  return ggml_tensor_new (context, data_type, shape, n_dims);
+}
+
+/**
  * ggml_context_new_tensor_1d:
  * @context: A #GGMLContext
  * @data_type: A #GGMLDataType for the new tensor
