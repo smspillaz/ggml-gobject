@@ -20,6 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <ggml-gobject/ggml-quantize.h>
 #include <ggml-gobject/ggml-gpt.h>
 #include <math.h>
 
@@ -618,4 +619,25 @@ ggml_gpt_model_forward_pass (GGMLModel *model,
                                                                ggml_model_get (model, "model/lm_head"),
                                                                NULL);
   return g_steal_pointer (&lm_head_output);
+}
+
+static const char *ggml_gpt_model_quantize_regexes[] = {
+  "model/wte",
+  "model/lm_head",
+  "model/h.*/attn/c_attn/w",
+  "model/h.*/attn/c_proj/w",
+  "model/h.*/mlp/c_fc/w",
+  "model/h.*/mlp/c_proj/w",
+  NULL
+};
+
+/**
+ * ggml_gpt_model_quantization_regexes:
+ *
+ * Returns: (transfer none) (array zero-terminated=1): A strv of weights to quantize for GPT models
+ */
+const char **
+ggml_gpt_model_quantization_regexes (void)
+{
+  return ggml_gpt_model_quantize_regexes;
 }
