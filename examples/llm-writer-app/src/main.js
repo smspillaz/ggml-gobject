@@ -62,6 +62,7 @@ const load_model = (model, cancellable, callback, progress_callback) => {
   GGML.LanguageModel.load_defined_from_istream_async(
     model,
     istream,
+    null,
     cancellable,
     (src, res) => {
       try {
