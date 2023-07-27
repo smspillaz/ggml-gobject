@@ -49,7 +49,7 @@ GBytes * ggml_tensor_get_bytes (GGMLTensor *tensor);
 void ggml_tensor_set_name (GGMLTensor *tensor,
                            const char *name);
 const char * ggml_tensor_get_name (GGMLTensor *tensor);
-
+GGMLDataType ggml_tensor_get_data_type (GGMLTensor *tensor);
 int64_t *ggml_tensor_get_shape (GGMLTensor *tensor, size_t *out_n_dims);
 
 GPtrArray * ggml_tensor_get_cgraph_children (GGMLTensor *tensor);

@@ -37,6 +37,12 @@ GGMLTensor *
 ggml_tensor_from_tensor (GGMLContext *context, struct ggml_tensor *base_tensor);
 
 GGMLTensor *
+ggml_tensor_new (GGMLContext  *context,
+                 GGMLDataType  data_type,
+                 int64_t      *shape,
+                 size_t        n_dims);
+
+GGMLTensor *
 ggml_tensor_new_1d (GGMLContext *context, GGMLDataType data_type, size_t size);
 
 GGMLTensor *

@@ -23,6 +23,7 @@
 #include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-gpt.h>
 #include <ggml-gobject/ggml-language-model.h>
+#include <ggml-gobject/ggml-quantize.h>
 #include <ggml-gobject/internal/ggml-async-queue-source.h>
 #include <ggml-gobject/internal/ggml-stream-internal.h>
 
@@ -869,6 +870,7 @@ ggml_model_set_possible_tied_weights (GGMLModel *model,
 /**
  * ggml_language_model_load_from_istream:
  * @istream: (transfer none): A #GInputStream
+ * @model_config: (nullable): A #GGMLModelConfig
  * @create_model_desc: (transfer none) (scope call): A #GGMLModelDescFromHyperparametersFunc to specify the model structure and weights
  * @create_model_desc_user_data: (closure create_model_desc): A closure for @create_model_desc
  * @forward_func: (scope notified) (nullable): A #GGMLModelFowardFunc
@@ -884,6 +886,7 @@ ggml_model_set_possible_tied_weights (GGMLModel *model,
  */
 GGMLLanguageModel *
 ggml_language_model_load_from_istream (GInputStream *istream,
+                                       GGMLModelConfig *model_config,
                                        GGMLModelDescFromHyperparametersFunc create_model_desc,
                                        gpointer create_model_desc_user_data,
                                        GGMLModelForwardFunc forward_func,
@@ -905,6 +908,29 @@ ggml_language_model_load_from_istream (GInputStream *istream,
     }
 
   g_autoptr (GGMLModelDescNode) model_desc_node = (*create_model_desc) (hyperparameters, create_model_desc_user_data);
+
+  GGMLDataType quantized_type;
+  const char **quantize_regexes = NULL;
+  const char **skip_quantize_regexes = NULL;
+  gboolean should_quantize = ggml_model_config_get_quantization_config (model_config,
+                                                                        &quantized_type,
+                                                                        &quantize_regexes,
+                                                                        &skip_quantize_regexes);
+
+  g_autoptr(GGMLModelDescNode) postprocessed_model_desc_node = (
+    should_quantize ? ggml_configure_quantized_model_desc_by_regexes (model_desc_node,
+                                                                      quantized_type,
+                                                                      quantize_regexes,
+                                                                      skip_quantize_regexes,
+                                                                      error) :
+                      ggml_model_desc_node_ref (model_desc_node)
+  );
+
+  if (postprocessed_model_desc_node == NULL)
+    {
+      return NULL;
+    }
+
   int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
   g_autoptr(GGMLTokenDictionary) token_dictionary = ggml_token_dictionary_load_from_istream (istream,
                                                                                              n_vocab,
@@ -918,7 +944,7 @@ ggml_language_model_load_from_istream (GInputStream *istream,
 
   g_auto(GStrv) loaded_keys = NULL;
   g_autoptr(GGMLModel) model = ggml_model_load_from_istream (istream,
-                                                             model_desc_node,
+                                                             postprocessed_model_desc_node,
                                                              hyperparameters,
                                                              forward_func,
                                                              forward_func_user_data,
@@ -971,6 +997,7 @@ static struct GGMLLanguageModelDefinitions {
  * ggml_language_model_load_defined_from_istream:
  * @model: A #GGMLDefinedLanguageModel configuration to load
  * @istream: (transfer none): A #GInputStream
+ * @model_config: (transfer none) (nullable): A #GGMLModelConfig
  * @cancellable: (transfer none): A #GCancellable
  * @error: A #GError
  *
@@ -985,10 +1012,12 @@ static struct GGMLLanguageModelDefinitions {
 GGMLLanguageModel *
 ggml_language_model_load_defined_from_istream (GGMLDefinedLanguageModel    model,
                                                GInputStream               *istream,
+                                               GGMLModelConfig            *model_config,
                                                GCancellable               *cancellable,
                                                GError                    **error)
 {
   return ggml_language_model_load_from_istream (istream,
+                                                model_config,
                                                 ggml_language_model_definitions[model].model_desc_from_hyperparameters_func,
                                                 NULL,
                                                 ggml_language_model_definitions[model].forward_func,
@@ -1001,6 +1030,7 @@ ggml_language_model_load_defined_from_istream (GGMLDefinedLanguageModel    model
 typedef struct _GGMLLanguageModelLoadFromIstreamData
 {
   GInputStream *istream;
+  GGMLModelConfig *config;
   GGMLModelDescFromHyperparametersFunc create_model_desc;
   gpointer create_model_desc_user_data;
   GDestroyNotify create_model_desc_user_data_destroy;
@@ -1017,6 +1047,7 @@ typedef struct _GGMLLanguageModelLoadFromIstreamData
 
 static GGMLLanguageModelLoadFromIstreamData *
 ggml_language_model_load_from_istream_data_new (GInputStream *istream,
+                                                GGMLModelConfig *config,
                                                 GGMLModelDescFromHyperparametersFunc create_model_desc,
                                                 gpointer create_model_desc_user_data,
                                                 GDestroyNotify create_model_desc_user_data_destroy,
@@ -1027,6 +1058,7 @@ ggml_language_model_load_from_istream_data_new (GInputStream *istream,
   GGMLLanguageModelLoadFromIstreamData *data = g_new0 (GGMLLanguageModelLoadFromIstreamData, 1);
 
   data->istream = g_object_ref (istream);
+  data->config = config != NULL ? ggml_model_config_ref (config) : NULL;
   data->create_model_desc = create_model_desc;
   data->create_model_desc_user_data = create_model_desc_user_data;
   data->create_model_desc_user_data_destroy = create_model_desc_user_data_destroy;
@@ -1041,6 +1073,7 @@ void
 ggml_language_model_load_from_istream_data_free (GGMLLanguageModelLoadFromIstreamData *data)
 {
   g_clear_pointer (&data->istream, g_object_unref);
+  g_clear_pointer (&data->config, ggml_model_config_unref);
   g_clear_pointer (&data->create_model_desc_user_data, data->create_model_desc_user_data_destroy);
   g_clear_pointer (&data->forward_func_user_data, data->forward_func_user_data_destroy);
 
@@ -1144,8 +1177,33 @@ ggml_language_model_load_from_istream_on_hyperparameters_read (GObject *src,
 
   /* We can already use the hyperparameters to create the model desc. */
   data->hyperparameters = g_steal_pointer (&hyperparameters);
-  data->model_desc = (*data->create_model_desc) (data->hyperparameters,
-                                                 data->create_model_desc_user_data);
+  g_autoptr(GGMLModelDescNode) model_desc = (*data->create_model_desc) (data->hyperparameters,
+                                                                        data->create_model_desc_user_data);
+
+  GGMLDataType quantized_type;
+  const char **quantize_regexes = NULL;
+  const char **skip_quantize_regexes = NULL;
+  gboolean should_quantize = ggml_model_config_get_quantization_config (data->config,
+                                                                        &quantized_type,
+                                                                        &quantize_regexes,
+                                                                        &skip_quantize_regexes);
+
+  g_autoptr(GGMLModelDescNode) postprocessed_model_desc_node = (
+    should_quantize ? ggml_configure_quantized_model_desc_by_regexes (model_desc,
+                                                                      quantized_type,
+                                                                      quantize_regexes,
+                                                                      skip_quantize_regexes,
+                                                                      &error) :
+                      ggml_model_desc_node_ref (model_desc)
+  );
+
+  if (postprocessed_model_desc_node == NULL)
+    {
+      g_task_return_error (task, error);
+      return;
+    }
+
+  data->model_desc = g_steal_pointer (&postprocessed_model_desc_node);
 
   /* Continue reading the stream, now for the token dictionary */
   ggml_token_dictionary_load_from_istream_async (data->istream,
@@ -1181,6 +1239,7 @@ ggml_language_model_load_from_istream_on_magic_read (GObject *src,
 /**
  * ggml_language_model_load_from_istream_async:
  * @istream: (transfer none): A #GInputStream
+ * @model_config: (nullable): A #GGMLModelConfig
  * @create_model_desc: (transfer none) (scope call): A #GGMLModelDescFromHyperparametersFunc to specify the model structure and weights
  * @create_model_desc_user_data: (closure create_model_desc): A closure for @create_model_desc
  * @create_model_desc_user_data_destroy: (destroy create_model_desc): A #GDestroyNotify for create_model_desc
@@ -1197,6 +1256,7 @@ ggml_language_model_load_from_istream_on_magic_read (GObject *src,
  */
 void
 ggml_language_model_load_from_istream_async (GInputStream *istream,
+                                             GGMLModelConfig *model_config,
                                              GGMLModelDescFromHyperparametersFunc create_model_desc,
                                              gpointer create_model_desc_user_data,
                                              GDestroyNotify create_model_desc_user_data_destroy,
@@ -1208,6 +1268,7 @@ ggml_language_model_load_from_istream_async (GInputStream *istream,
                                              gpointer user_data)
 {
   g_autoptr(GGMLLanguageModelLoadFromIstreamData) data = ggml_language_model_load_from_istream_data_new(istream,
+                                                                                                        model_config,
                                                                                                         create_model_desc,
                                                                                                         create_model_desc_user_data,
                                                                                                         create_model_desc_user_data_destroy,
@@ -1268,6 +1329,7 @@ ggml_language_model_load_defined_from_istream_finish (GAsyncResult  *result,
  * ggml_language_model_load_defined_from_istream_async:
  * @model: A #GGMLDefinedLanguageModel configuration to load
  * @istream: (transfer none): A #GInputStream
+ * @model_config: (nullable): A #GGMLModelConfig
  * @cancellable: (transfer none) (nullable): A #GCancellable
  * @callback: A #GAsyncReadyCallback to be called when loading is complete.
  * @user_data: (closure callback): Some user data for @callback
@@ -1281,12 +1343,14 @@ ggml_language_model_load_defined_from_istream_finish (GAsyncResult  *result,
 void
 ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageModel   model,
                                                      GInputStream              *istream,
+                                                     GGMLModelConfig           *model_config,
                                                      GCancellable              *cancellable,
                                                      GAsyncReadyCallback        callback,
                                                      gpointer                   user_data,
                                                      GError                   **error)
 {
   ggml_language_model_load_from_istream_async (istream,
+                                               model_config,
                                                ggml_language_model_definitions[model].model_desc_from_hyperparameters_func,
                                                NULL,
                                                NULL,

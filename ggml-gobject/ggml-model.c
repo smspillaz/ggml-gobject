@@ -23,6 +23,7 @@
 #include <ggml-gobject/ggml-model.h>
 #include <ggml-gobject/internal/ggml-stream-internal.h>
 #include <ggml-gobject/internal/ggml-tensor-internal.h>
+#include <ggml-gobject/ggml-enum-types.h>
 
 struct _GGMLModel {
   GGMLContext *owning_context;
@@ -89,7 +90,8 @@ ggml_model_new_from_flattened_desc (GGMLContext *context,
   return model;
 }
 
-static inline int32_t product_i32 (int32_t *array, size_t n)
+static inline int32_t
+product_i32 (int32_t *array, size_t n)
 {
   int32_t product = 1;
   for (size_t i = 0; i < n; ++i)
@@ -100,6 +102,294 @@ static inline int32_t product_i32 (int32_t *array, size_t n)
   return product;
 }
 
+static inline int64_t
+product_i64 (int64_t *array, size_t n)
+{
+  int64_t product = 1;
+  for (size_t i = 0; i < n; ++i)
+    {
+      product *= array[i];
+    }
+
+  return product;
+}
+
+static GArray *
+data_to_f32_array (GGMLDataType   data_type,
+                   char          *data,
+                   size_t         n_elements,
+                   float        **out_data_ptr)
+{
+  g_assert (data_type == GGML_DATA_TYPE_F16 || data_type == GGML_DATA_TYPE_F32);
+
+  if (data_type == GGML_DATA_TYPE_F16)
+    {
+      g_autoptr(GArray) tensor_data = g_array_sized_new (FALSE, FALSE, sizeof (float), n_elements);
+      tensor_data->len = n_elements;
+
+      ggml_fp16_t *fp16_data = (ggml_fp16_t *) data;
+
+      for (size_t i = 0; i < n_elements; ++i)
+        {
+          g_array_index (tensor_data, float, i) = ggml_fp16_to_fp32 (fp16_data[i]);
+        }
+
+      *out_data_ptr = (float *) tensor_data->data;
+      return g_steal_pointer (&tensor_data);
+    }
+
+  /* In this case, we just return NULL and instead
+   * alias the data directly */
+  *out_data_ptr = (float *) data;
+
+  return NULL;
+}
+
+static size_t
+convert_f32_to_f16 (const float   *data,
+                    size_t         n_elements,
+                    char          *out_data_ptr)
+{
+  ggml_fp16_t *fp16_ptr = (ggml_fp16_t *) out_data_ptr;
+  const float *fp32_ptr = (const float *) data;
+
+  for (size_t i = 0; i < n_elements; ++i)
+    {
+      fp16_ptr[i] = fp32_ptr[i];
+    }
+
+  return n_elements * ggml_type_size ((enum ggml_type) GGML_DATA_TYPE_F16);
+}
+
+/**
+ * ggml_convert_data: (skip)
+ * @src_type: The source #GGMLDataType
+ * @original_data: The original data in bytes
+ * @original_data_length: The length of the original data
+ * @shape: The shape of the original data
+ * @n_dims: The number of dimensions in the original data's shape
+ * @quantize_type: The target #GGMLDataType to quantize into
+ * @histogram: (inout) (array length=n_histogram): A histogram to write into
+ * @n_histogram: Length of @histogram
+ * @out_data: (inout): An output pointer for quantized data
+ * @out_data_len: The size of the output quantized data.
+ * @error: A #GError
+ *
+ * Quantize tensor data or convert to another data type.
+ * Histogram information is written into @histogram if it is set.
+ *
+ * Returns: %TRUE on success, %FALSE with @error set on failure.
+ */
+static gboolean
+convert_data_for_model (GGMLDataType   src_type,
+                        char          *original_data,
+                        size_t         original_data_length,
+                        int64_t       *shape,
+                        size_t         n_dims,
+                        GGMLDataType   tgt_type,
+                        int64_t       *histogram,
+                        size_t         n_histogram,
+                        char          *out_data,
+                        size_t         out_data_len,
+                        GError       **error)
+{
+  /* This should not usually happen, but in this case we memcpy
+   * directly into the out_data ptr, assuming that it is not aliased */
+  if (src_type == tgt_type)
+    {
+      if (out_data == original_data)
+        {
+          return TRUE;
+        }
+
+      if (out_data_len != original_data_length)
+        {
+          g_set_error (error,
+                       G_IO_ERROR,
+                       G_IO_ERROR_FAILED,
+                       "Cannot copy from src to tgt, buffer sizes (src: %zu, tgt: %zu) differ",
+                       original_data_length,
+                       out_data_len);
+          return FALSE;
+        }
+
+      memcpy (out_data, original_data, out_data_len);
+      return TRUE;
+    }
+
+  if (src_type != GGML_DATA_TYPE_F32 &&
+      src_type != GGML_DATA_TYPE_F16)
+    {
+      g_autoptr(GEnumClass) src_type_enum = g_type_class_ref (GGML_TYPE_DATA_TYPE);
+      GEnumValue *src_data_type_value = g_enum_get_value (src_type_enum, src_type);
+      g_set_error (error,
+                   G_IO_ERROR,
+                   G_IO_ERROR_FAILED,
+                   "Cannot convert from src_type %s, src_type must be F32 or F16",
+                   src_data_type_value->value_name);
+      return FALSE;
+    }
+
+  float *data_f32_ptr = NULL;
+
+  /* We return data_f32 here, but it might not be defined - its
+   * just a convenience to free the data later, but the real
+   * data pointer comes from data_ptr. This helps to avoid copies where
+   * not necessary. */
+  size_t n_elements = product_i64 (shape, n_dims);
+  g_autoptr(GArray) data_f32 = data_to_f32_array (src_type,
+                                                  original_data,
+                                                  n_elements,
+                                                  &data_f32_ptr);
+
+  size_t cur_size = 0;
+
+  switch (tgt_type)
+    {
+      case GGML_DATA_TYPE_Q4_0:
+        cur_size = ggml_quantize_q4_0 ((float *) data_f32_ptr,
+                                       out_data,
+                                       n_elements,
+                                       shape[0],
+                                       histogram);
+        break;
+      case GGML_DATA_TYPE_Q4_1:
+        cur_size = ggml_quantize_q4_1 ((float *) data_f32_ptr,
+                                       out_data,
+                                       n_elements,
+                                       shape[0],
+                                       histogram);
+        break;
+      case GGML_DATA_TYPE_Q5_0:
+        cur_size = ggml_quantize_q5_0 ((float *) data_f32_ptr,
+                                       out_data,
+                                       n_elements,
+                                       shape[0],
+                                       histogram);
+        break;
+      case GGML_DATA_TYPE_Q5_1:
+        cur_size = ggml_quantize_q5_1 ((float *) data_f32_ptr,
+                                       out_data,
+                                       n_elements,
+                                       shape[0],
+                                       histogram);
+        break;
+      case GGML_DATA_TYPE_Q8_0:
+        cur_size = ggml_quantize_q8_0 ((float *) data_f32_ptr,
+                                       out_data,
+                                       n_elements,
+                                       shape[0],
+                                       histogram);
+        break;
+      case GGML_DATA_TYPE_F16:
+        cur_size = convert_f32_to_f16 ((float *) data_f32_ptr,
+                                       n_elements,
+                                       out_data);
+        break;
+      default:
+        {
+          g_autoptr(GEnumClass) tgt_type_class = g_type_class_ref (GGML_TYPE_DATA_TYPE);
+          GEnumValue *tgt_data_type_value = g_enum_get_value (tgt_type_class, tgt_type);
+          g_set_error (error,
+                       G_IO_ERROR,
+                       G_IO_ERROR_FAILED,
+                       "Conversion failed, tgt_type cannot be %s",
+                       tgt_data_type_value->value_name);
+          return FALSE;
+        }
+    }
+
+  g_assert (cur_size <= out_data_len);
+
+  return TRUE;
+}
+
+static gboolean
+read_into_tensor (GGMLTensor    *tensor,
+                  GGMLDataType   stream_data_type,
+                  GInputStream  *istream,
+                  int64_t       *histogram,
+                  size_t         histogram_len,
+                  GCancellable  *cancellable,
+                  GError       **error)
+{
+  GGMLDataType tensor_data_type = ggml_tensor_get_data_type (tensor);
+  size_t tensor_definition_n_elements = ggml_tensor_n_elements (tensor);
+  size_t stream_bytes_per_element = ggml_size_of_data_type (stream_data_type);
+  size_t expected_bytes = (tensor_definition_n_elements * stream_bytes_per_element / ggml_blck_size ((enum ggml_type) stream_data_type));
+  size_t allocated_bytes = 0;
+  char *tensor_data_ptr = ggml_tensor_get_data (tensor, &allocated_bytes);
+
+  if (stream_data_type != tensor_data_type)
+    {
+      /* Conversion required. First read the data from the stream,
+       * then convert it and write the result into the tensor */
+      g_autoptr(GArray) stream_data = g_array_sized_new (FALSE, TRUE, sizeof (char), expected_bytes);
+      stream_data->len = expected_bytes;
+
+      /* Now we can read the tensor data */
+      if (!ggml_input_stream_read_exactly (istream,
+                                           stream_data->data,
+                                           expected_bytes,
+                                           cancellable,
+                                           error))
+        {
+          return FALSE;
+        }
+
+      /* Now apply the conversion required */
+      GError *my_error = NULL;
+      size_t n_dims;
+      int64_t *shape = ggml_tensor_get_shape (tensor, &n_dims);
+
+      if (!convert_data_for_model (stream_data_type,
+                                   stream_data->data,
+                                   stream_data->len,
+                                   shape,
+                                   n_dims,
+                                   tensor_data_type,
+                                   histogram,
+                                   histogram_len,
+                                   tensor_data_ptr,
+                                   allocated_bytes,
+                                   &my_error))
+        {
+          g_set_error (error,
+                       G_IO_ERROR,
+                       G_IO_ERROR_FAILED,
+                       "Unable to convert %s",
+                       my_error->message);
+          g_clear_error (&my_error);
+          return FALSE;
+        }
+
+      return TRUE;
+    }
+
+  if (expected_bytes != allocated_bytes)
+    {
+      g_set_error (error,
+                   G_IO_ERROR,
+                   G_IO_ERROR_FAILED,
+                   "Tensor allocation of %zu bytes, expected %zu bytes",
+                   allocated_bytes,
+                   expected_bytes);
+      return FALSE;
+    }
+
+  /* No conversion required, just read the tensor */
+  if (!ggml_input_stream_read_exactly (istream,
+                                       tensor_data_ptr,
+                                       allocated_bytes,
+                                       cancellable,
+                                       error))
+    {
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
 static gboolean
 ggml_model_load_weights_from_istream (GInputStream *istream,
                                       GGMLModel *model,
@@ -108,6 +398,8 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
                                       GError **error)
 {
   g_autoptr(GPtrArray) loaded_keys = g_ptr_array_new_full (0, g_free);
+  g_autoptr(GArray) histogram = g_array_sized_new (FALSE, TRUE, sizeof (int64_t), 1 << 4);
+  histogram->len = 1 << 4;
 
   while (TRUE)
     {
@@ -175,20 +467,23 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
           return FALSE;
         }
 
-      size_t bytes_per_element = ggml_size_of_data_type (ttype);
-      size_t allocated_bytes = 0;
-      char *tensor_data_ptr = ggml_tensor_get_data (tensor, &allocated_bytes);
+      GError *my_error = NULL;
 
-      size_t expected_bytes = (tensor_definition_n_elements * bytes_per_element / ggml_tensor_block_size (tensor));
-      if (expected_bytes != allocated_bytes)
+      if (!read_into_tensor (tensor,
+                             ttype,
+                             istream,
+                             (int64_t *) histogram->data,
+                             histogram->len,
+                             cancellable,
+                             &my_error))
         {
-          g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Tensor %s has allocation of %zu bytes, expected %zu bytes", name_buffer, allocated_bytes, expected_bytes);
-          return FALSE;
-        }
-
-      /* Now we can read the tensor */
-      if (!ggml_input_stream_read_exactly (istream, tensor_data_ptr, allocated_bytes, cancellable, error))
-        {
+          g_set_error (error,
+                       G_IO_ERROR,
+                       G_IO_ERROR_FAILED,
+                       "Unable to read into tensor %s: %s",
+                       name_buffer,
+                       my_error->message);
+          g_clear_error (&my_error);
           return FALSE;
         }
 
@@ -207,45 +502,55 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
 }
 
 static size_t
-ggml_estimate_transformer_model_memory (int32_t n_vocab, int32_t n_embd, int32_t n_head, int32_t n_layer, int32_t n_ctx, int32_t ftype)
+ggml_estimate_tensor_size_for_type (GGMLDataType  data_type,
+                                    int64_t      *shape,
+                                    size_t        n_shape)
 {
-  const int32_t head_dim = n_embd / n_head;
-  const int32_t kv_heads = n_head;
-  const int32_t kv_dim = kv_heads * head_dim;
-  enum ggml_type wtype = ggml_ftype_to_ggml_type((enum ggml_ftype) (ftype));
-  size_t ctx_size = 0;
+  size_t nb[GGML_MAX_DIMS];
+  size_t ne[GGML_MAX_DIMS];
+  size_t blk_size = ggml_blck_size (data_type);
 
-  ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // ln_f_g
-  ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // ln_f_b
+  /* The true size is the stride at the final shape index * number
+   * of elements (eg, how do we get from the beginning to the end
+   * of the tensor on the outer dimension */
+  nb[0] = ggml_type_size (data_type);
+  ne[0] = shape[0];
+  nb[1] = nb[0] * (ne[0] / blk_size);
+  ne[1] = (n_shape > 1) ? shape[1] : 1;
 
-  ctx_size += n_vocab * n_embd * ggml_type_sizef(wtype);         // wte
-  ctx_size +=   n_ctx * n_embd * ggml_type_sizef(GGML_TYPE_F32); // wpe
-  ctx_size += n_vocab * n_embd * ggml_type_sizef(wtype);         // lm_head
+  for (size_t i = 2; i < GGML_MAX_DIMS; ++i)
+    {
+      ne[i] = (i < n_shape) ? shape[i] : 1;
+      nb[i] = ne[i - 1] * nb[i - 1];
+    }
 
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_1_g
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_1_b
+  return ne[GGML_MAX_DIMS - 1] * nb[GGML_MAX_DIMS - 1];
+}
 
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_2_g
-  ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ln_2_b
+static size_t
+ggml_estimate_model_size_from_flattened_desc (GHashTable *flattened_desc)
+{
+  gpointer key, value;
+  GHashTableIter iter;
 
-  ctx_size += n_layer * ((n_embd + 2 * kv_dim) * n_embd * 3 * ggml_type_sizef(wtype));         // c_attn_attn_w // TODO:
-  ctx_size += n_layer * (       (n_embd + 2 * kv_dim) * 3 * ggml_type_sizef(GGML_TYPE_F32)); // c_attn_attn_b
+  size_t computed_size = 0;
+  size_t overhead = ggml_tensor_overhead ();
 
-  ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(wtype));           // c_attn_proj_w
-  ctx_size += n_layer * (       n_embd * ggml_type_sizef(GGML_TYPE_F32));   // c_attn_proj_b
+  g_hash_table_iter_init (&iter, flattened_desc);
+  while (g_hash_table_iter_next (&iter, &key, &value))
+    {
+      GGMLModelDescLeaf *leaf = value;
 
-  ctx_size += n_layer * (4 * n_embd * n_embd * ggml_type_sizef(wtype));         // c_mlp_fc_w
-  ctx_size += n_layer * (       4 * n_embd * ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_fc_b
+      size_t n_dims = leaf->n_dim;
+      int64_t *shape = leaf->dimensions;
 
-  ctx_size += n_layer * (4 * n_embd *n_embd * ggml_type_sizef(wtype));         // c_mlp_proj_w
-  ctx_size += n_layer * (         n_embd * ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_proj_b
+      /* Here we will quantize, so estimate the size of the quantized tensor */
+      computed_size += ggml_estimate_tensor_size_for_type (leaf->type,
+                                                           shape,
+                                                           n_dims) + overhead;
+    }
 
-  ctx_size += n_ctx*n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_k
-  ctx_size += n_ctx*n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_v
-
-  ctx_size += (6 + 12 * n_layer) * 512; // object overhead
-
-  return ctx_size;
+  return computed_size;
 }
 
 /**
@@ -274,16 +579,9 @@ ggml_model_load_from_istream (GInputStream                           *istream,
                               GCancellable                           *cancellable,
                               GError                                **error)
 {
-  const int32_t n_embd = ggml_hyperparameters_get_int32 (hyperparameters, "n_embd");
-  const int32_t n_layer = ggml_hyperparameters_get_int32 (hyperparameters, "n_layer");
-  const int32_t n_ctx = ggml_hyperparameters_get_int32 (hyperparameters, "n_ctx");
-  const int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
-  const int32_t n_head = ggml_hyperparameters_get_int32 (hyperparameters, "n_head");
-  const int32_t ftype = ggml_hyperparameters_get_int32 (hyperparameters, "ftype");
-
-  size_t memory_size = ggml_estimate_transformer_model_memory (n_vocab, n_embd, n_head, n_layer, n_ctx, ftype);
-  g_autoptr (GGMLContext) context = ggml_context_new (memory_size);
   g_autoptr (GHashTable) flattened_desc = ggml_model_desc_node_flatten (model_desc_node);
+  size_t memory_size = ggml_estimate_model_size_from_flattened_desc (flattened_desc);
+  g_autoptr (GGMLContext) context = ggml_context_new (memory_size);
   g_autoptr (GGMLModel) model = ggml_model_new_from_flattened_desc (context,
                                                                     flattened_desc,
                                                                     forward_func,

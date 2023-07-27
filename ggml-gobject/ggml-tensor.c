@@ -36,6 +36,19 @@ ggml_tensor_from_tensor (GGMLContext *context, struct ggml_tensor *base_tensor)
 }
 
 GGMLTensor *
+ggml_tensor_new (GGMLContext  *context,
+                 GGMLDataType  data_type,
+                 int64_t      *shape,
+                 size_t        n_dims)
+{
+  return ggml_tensor_from_tensor (context,
+                                  ggml_new_tensor (context->ctx,
+                                                   (enum ggml_type) data_type,
+                                                   n_dims,
+                                                   shape));
+}
+
+GGMLTensor *
 ggml_tensor_new_1d (GGMLContext *context, GGMLDataType data_type, size_t size)
 {
   return ggml_tensor_from_tensor (context,
@@ -168,11 +181,12 @@ ggml_tensor_n_bytes (GGMLTensor *tensor)
  * @size: The number of bytes to read
  *
  * Sets the data of the tensor. It is the caller's responsibility to
- * pass a buffer of the correct size.
+ * pass a buffer of the correct size and stride.
  */
 void
 ggml_tensor_set_data (GGMLTensor *tensor, char *data, size_t size)
 {
+  g_assert (size <= ggml_tensor_n_bytes (tensor));
   memcpy(tensor->tensor->data, (const void *) data, size);
 }
 
@@ -278,6 +292,18 @@ const char *
 ggml_tensor_get_name (GGMLTensor *tensor)
 {
   return ggml_get_name (tensor->tensor);
+}
+
+/**
+ * ggml_tensor_get_data_type:
+ * @tensor: A #GGMLTensor
+ *
+ * Returns: A #GGMLDataType which is the data type of this tensor
+ */
+GGMLDataType
+ggml_tensor_get_data_type (GGMLTensor *tensor)
+{
+  return (GGMLDataType) tensor->tensor->type;
 }
 
 /**
