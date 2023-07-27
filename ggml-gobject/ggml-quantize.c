@@ -70,9 +70,8 @@ strv_to_regex_array (const char **strv,
       return TRUE;
     }
 
-  g_autoptr(GPtrArray) regex_array = g_ptr_array_new_null_terminated (g_strv_length ((GStrv) strv),
-                                                                      (GDestroyNotify) g_regex_unref,
-                                                                      TRUE);
+  g_autoptr(GPtrArray) regex_array = g_ptr_array_new_full (g_strv_length ((GStrv) strv),
+                                                           (GDestroyNotify) g_regex_unref);
 
   for (const char **ptr = strv; *ptr != NULL; ++ptr)
     {
@@ -86,6 +85,8 @@ strv_to_regex_array (const char **strv,
 
       g_ptr_array_add (regex_array, regex);
     }
+
+  g_ptr_array_add (regex_array, NULL);
 
   *out_ptr_array = g_steal_pointer (&regex_array);
   return TRUE;
