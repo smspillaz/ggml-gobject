@@ -841,7 +841,8 @@ ggml_model_forward (GGMLModel *model,
 
   ggml_compute_graph_build_forward_expand (compute_graph, output);
 
-  g_autoptr(GGMLComputePlan) compute_plan = ggml_compute_graph_plan (compute_graph, 2);
+  size_t num_threads = g_get_num_processors ();
+  g_autoptr(GGMLComputePlan) compute_plan = ggml_compute_graph_plan (compute_graph, num_threads);
 
   if (!ggml_compute_graph_compute (compute_graph,
                                    compute_plan,
