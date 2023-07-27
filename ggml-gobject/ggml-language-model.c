@@ -1177,8 +1177,33 @@ ggml_language_model_load_from_istream_on_hyperparameters_read (GObject *src,
 
   /* We can already use the hyperparameters to create the model desc. */
   data->hyperparameters = g_steal_pointer (&hyperparameters);
-  data->model_desc = (*data->create_model_desc) (data->hyperparameters,
-                                                 data->create_model_desc_user_data);
+  g_autoptr(GGMLModelDescNode) model_desc = (*data->create_model_desc) (data->hyperparameters,
+                                                                        data->create_model_desc_user_data);
+
+  GGMLDataType quantized_type;
+  const char **quantize_regexes = NULL;
+  const char **skip_quantize_regexes = NULL;
+  gboolean should_quantize = ggml_model_config_get_quantization_config (data->config,
+                                                                        &quantized_type,
+                                                                        &quantize_regexes,
+                                                                        &skip_quantize_regexes);
+
+  g_autoptr(GGMLModelDescNode) postprocessed_model_desc_node = (
+    should_quantize ? ggml_configure_quantized_model_desc_by_regexes (model_desc,
+                                                                      quantized_type,
+                                                                      quantize_regexes,
+                                                                      skip_quantize_regexes,
+                                                                      &error) :
+                      ggml_model_desc_node_ref (model_desc)
+  );
+
+  if (postprocessed_model_desc_node == NULL)
+    {
+      g_task_return_error (task, error);
+      return;
+    }
+
+  data->model_desc = g_steal_pointer (&postprocessed_model_desc_node);
 
   /* Continue reading the stream, now for the token dictionary */
   ggml_token_dictionary_load_from_istream_async (data->istream,
