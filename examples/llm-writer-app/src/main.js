@@ -52,17 +52,28 @@ const list_store_from_rows = (rows) => {
   return list_store;
 };
 
-const load_model = (model, cancellable, callback, progress_callback) => {
+const load_model = (model, quantization_level, cancellable, callback, progress_callback) => {
   const istream = GGML.LanguageModel.stream_from_cache(model);
 
   if (progress_callback) {
     istream.set_download_progress_callback(progress_callback);
   }
 
+  const config = GGML.ModelConfig.new();
+
+  if (quantization_level !== null)
+    {
+      config.set_quantization_config(
+        quantization_level,
+        GGML.gpt_model_quantization_regexes(),
+        null
+      )
+    }
+
   GGML.LanguageModel.load_defined_from_istream_async(
     model,
     istream,
-    null,
+    config,
     cancellable,
     (src, res) => {
       try {
@@ -78,10 +89,20 @@ const load_model = (model, cancellable, callback, progress_callback) => {
 };
 
 const COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM = Object.keys(GGML.DefinedLanguageModel).map(k => GGML.DefinedLanguageModel[k]);
+const COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM = [
+  null,
+  GGML.DataType.F16,
+  GGML.DataType.Q8_0,
+  GGML.DataType.Q5_0,
+  GGML.DataType.Q5_1,
+  GGML.DataType.Q4_0,
+  GGML.DataType.Q4_1,
+];
 
 class ModelLoader {
   constructor() {
     this._model_enum = null;
+    this._quantization_enum = null;
     this._model = null;
     this._pending_load = null;
   }
@@ -96,21 +117,24 @@ class ModelLoader {
    * if the action is cancelled, then @callback won't be invoked, but
    * the model will stil be downloaded if the download is in progress.
    */
-  with_model(model_enum, cancellable, callback, progress_callback) {
-    if (this._model_enum === model_enum) {
+  with_model(model_enum, quantization_enum, cancellable, callback, progress_callback) {
+    if (this._model_enum === model_enum &&
+        this._quantization_enum === quantization_enum) {
       return callback(this._model)
     }
 
     if (this._pending_load) {
       /* We only do the most recent callback once the model is loaded
        * and discard other ones */
-      if (this._pending_load.model_enum !== model_enum) {
+      if (this._pending_load.model_enum !== model_enum ||
+          this._pending_load.quantization_enum !== quantization_enum) {
         /* Cancel the existing pending load and start over again */
         this._pending_load.load_cancellable.cancel();
       } else {
         /* Don't cancel the pending load operation, but change the callback */
         this._pending_load = {
           model_enum: model_enum,
+          quantization_enum: quantization_enum,
           callback: callback,
           load_cancellable: this._pending_load.load_cancellable,
           action_cancellable: cancellable
@@ -122,16 +146,18 @@ class ModelLoader {
     /* Create a pending load and load the model */
     this._pending_load = {
       model_enum: model_enum,
+      quantization_enum: quantization_enum,
       callback: callback,
       load_cancellable: new Gio.Cancellable(),
       action_cancellable: cancellable
     };
 
-    load_model(model_enum, this._pending_load.load_cancellable, model => {
+    load_model(model_enum, quantization_enum, this._pending_load.load_cancellable, model => {
       const { callback, action_cancellable } = this._pending_load;
 
       if (action_cancellable === null || !action_cancellable.is_cancelled()) {
         this._model_enum = model_enum;
+        this._quantization_enum = quantization_enum;
         this._model = model;
 
         System.gc();
@@ -140,6 +166,19 @@ class ModelLoader {
     }, progress_callback);
   }
 }
+
+const makeCombobox = (listOptions, callback) => {
+  const combobox = Gtk.ComboBox.new_with_model(
+    list_store_from_rows(listOptions)
+  );
+  const renderer = new Gtk.CellRendererText();
+  combobox.pack_start(renderer, true);
+  combobox.add_attribute(renderer, 'text', 0);
+  combobox.set_active(0);
+  combobox.connect('changed', callback);
+
+  return combobox;
+};
 
 const LLMWriterAppMainWindow = GObject.registerClass({
   Template: `${RESOURCE_PATH}/main.ui`,
@@ -179,30 +218,36 @@ const LLMWriterAppMainWindow = GObject.registerClass({
     this._spinner = new Gtk.Spinner({
       visible: true
     });
-    const combobox = Gtk.ComboBox.new_with_model(
-      list_store_from_rows([
-        ['GPT2 117M'],
-        ['GPT2 345M'],
-        ['GPT2 774M'],
-        ['GPT2 1558M'],
-      ])
-    );
-    const renderer = new Gtk.CellRendererText();
-    combobox.pack_start(renderer, true);
-    combobox.add_attribute(renderer, 'text', 0);
-    combobox.set_active(0);
-    combobox.connect('changed', () => {
+    const comboboxChangedCallback = () => {
       resetProgress();
       this._model_loader.with_model(
-        COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[combobox.active],
+        COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[modelCombobox.active],
+        COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM[quantizationCombobox.active],
         null,
         () => this._spinner.stop(),
         progressCallback
       );
-    });
-    combobox.show();
+    };
+    const modelCombobox = makeCombobox([
+      ['GPT2 117M'],
+      ['GPT2 345M'],
+      ['GPT2 774M'],
+      ['GPT2 1558M'],
+    ], comboboxChangedCallback);
+    modelCombobox.show();
+    const quantizationCombobox = makeCombobox([
+      ['No quantization'],
+      ['F16'],
+      ['Q8_0'],
+      ['Q5_0'],
+      ['Q5_1'],
+      ['Q4_0'],
+      ['Q4_1'],
+    ], comboboxChangedCallback);
+    quantizationCombobox.show();
 
-    header.pack_start(combobox);
+    header.pack_start(modelCombobox);
+    header.pack_start(quantizationCombobox);
     header.pack_end(this._spinner);
     this.set_titlebar(header);
 
@@ -263,7 +308,8 @@ const LLMWriterAppMainWindow = GObject.registerClass({
         buffer.create_mark("predictions-start", buffer.get_end_iter(), true);
 
         this._model_loader.with_model(
-          COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[combobox.active],
+          COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[modelCombobox.active],
+          COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM[quantizationCombobox.active],
           this._cancellable,
           model => {
             model.complete_async(
