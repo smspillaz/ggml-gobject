@@ -59,6 +59,17 @@ matches_quantize_regexes (GRegex     **quantize_keys,
   return should_quantize;
 }
 
+static void
+unref_regex_ignore_null (GRegex *regex)
+{
+  if (regex == NULL)
+    {
+      return;
+    }
+
+  return g_regex_unref (regex);
+}
+
 static gboolean
 strv_to_regex_array (const char **strv,
                      GPtrArray  **out_ptr_array,
@@ -71,7 +82,7 @@ strv_to_regex_array (const char **strv,
     }
 
   g_autoptr(GPtrArray) regex_array = g_ptr_array_new_full (g_strv_length ((GStrv) strv),
-                                                           (GDestroyNotify) g_regex_unref);
+                                                           (GDestroyNotify) unref_regex_ignore_null);
 
   for (const char **ptr = strv; *ptr != NULL; ++ptr)
     {
