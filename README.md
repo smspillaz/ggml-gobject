@@ -11,6 +11,8 @@ since internally GGML does not allocate any memory.
 
 See [here](tests/js/testLoadGPT2.js) for an example of using the bound API from gjs.
 
+At present the API and ABI are *not* stable, and may change between commmits.
+
 # Building
 
     # install ggml first. make sure to use -DBUILD_SHARED_LIBRARY=ON
