@@ -39,6 +39,7 @@ GType ggml_language_model_completion_cursor_get_type (void);
 GGMLLanguageModelCompletionCursor * ggml_language_model_completion_cursor_ref (GGMLLanguageModelCompletionCursor *cursor);
 void ggml_language_model_completion_cursor_unref (GGMLLanguageModelCompletionCursor *cursor);
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelCompletionCursor, ggml_language_model_completion_cursor_unref)
 
 typedef struct _GGMLLanguageModel GGMLLanguageModel;
 
