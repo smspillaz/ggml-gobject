@@ -18,7 +18,7 @@
 # with ggml-gobject; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-project('ggml-gobject', ['c'],
+project('ggml-gobject', ['c', 'cpp'],
         version: '0.0.0',
         license: 'LGPL2+',
         meson_version: '>= 0.55.0')

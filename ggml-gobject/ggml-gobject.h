@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-compute-graph.h>
 #include <ggml-gobject/ggml-context.h>
 #include <ggml-gobject/ggml-gpt.h>
@@ -30,6 +31,7 @@
 #include <ggml-gobject/ggml-model-desc.h>
 #include <ggml-gobject/ggml-model.h>
 #include <ggml-gobject/ggml-ops.h>
+#include <ggml-gobject/ggml-quantize.h>
 #include <ggml-gobject/ggml-tensor.h>
 #include <ggml-gobject/ggml-token-dictionary.h>
 #include <ggml-gobject/ggml-types.h>
