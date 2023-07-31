@@ -26,4 +26,4 @@ tests_exec = executable(
   ]
 )
 
-test('cpp-tests', tests_exec)
+test('cpp-tests', tests_exec, is_parallel: false)
