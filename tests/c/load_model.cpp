@@ -25,7 +25,7 @@
 
 #include <ggml-gobject/ggml-gobject.h>
 
-TEST(Tokenize, SimpleString)
+TEST(Tokenize, simple_string)
 {
   const char *dictionary_strings[] = {
     "ab",
