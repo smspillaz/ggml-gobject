@@ -1315,7 +1315,7 @@ ggml_language_model_load_from_istream_on_token_dictionary_read (GObject *src,
 
   /* Continue reading the stream, now for the model itself.
    *
-   * After launching this, the model_forwad_func_user_data is transferred
+   * After launching this, the model_forward_func_user_data is transferred
    * to the subtask, so set to %NULL in the GGMLHyperparametersLoadFromIstreamData
    */
   ggml_model_load_from_istream_async (data->istream,
