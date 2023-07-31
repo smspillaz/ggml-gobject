@@ -31,9 +31,18 @@
 
 G_BEGIN_DECLS
 
+typedef struct _GGMLLanguageModelCompletionCursor GGMLLanguageModelCompletionCursor;
+
+#define GGML_TYPE_LANGUAGE_MODEL_COMPLETION_CURSOR (ggml_language_model_completion_cursor_get_type ())
+GType ggml_language_model_completion_cursor_get_type (void);
+
+GGMLLanguageModelCompletionCursor * ggml_language_model_completion_cursor_ref (GGMLLanguageModelCompletionCursor *cursor);
+void ggml_language_model_completion_cursor_unref (GGMLLanguageModelCompletionCursor *cursor);
+
+
 typedef struct _GGMLLanguageModel GGMLLanguageModel;
 
-#define GGML_TYPE_LANGUAGE_MODEL (ggml_language_model_get_type ());
+#define GGML_TYPE_LANGUAGE_MODEL (ggml_language_model_get_type ())
 GType ggml_language_model_get_type (void);
 
 GGMLLanguageModel *
@@ -102,29 +111,49 @@ GGMLLanguageModel *ggml_language_model_load_defined_from_istream_finish (GAsyncR
 GGMLCachedModelIstream *ggml_language_model_stream_from_cache (GGMLDefinedLanguageModel   defined_model,
                                                                GError                   **error);
 
-char * ggml_language_model_complete (GGMLLanguageModel  *language_model,
-                                     const char         *prompt,
-                                     int32_t             num_iterations,
-                                     GCancellable       *cancellable,
-                                     gboolean           *out_is_complete_eos,
-                                     GError            **error);
-
 char * ggml_language_model_decode_tokens (GGMLLanguageModel *language_model,
                                           int32_t           *tokens,
                                           size_t             length);
-char * ggml_language_model_complete_finish (GGMLLanguageModel  *language_model,
-                                            GAsyncResult       *result,
-                                            gboolean           *out_is_complete,
-                                            gboolean           *out_is_complete_eos,
-                                            GError            **error);
-GThread * ggml_language_model_complete_async (GGMLLanguageModel    *language_model,
-                                         const char           *prompt,
-                                         size_t                num_iterations,
-                                         size_t                chunk_size,
-                                         GCancellable         *cancellable,
-                                         GAsyncReadyCallback   callback,
-                                         gpointer              user_data,
-                                         GDestroyNotify        user_data_destroy);
+
+GGMLLanguageModelCompletionCursor * ggml_language_model_create_completion (GGMLLanguageModel *language_model,
+                                                                           const char        *prompt,
+                                                                           size_t             max_completion_tokens);
+
+typedef void (*GGMLLanguageModelCompletionCursorStreamFunc) (const char *decoded,
+                                                             gboolean    is_complete_eos,
+                                                             gpointer    user_data);
+
+void ggml_language_model_completion_cursor_exec_stream_async (GGMLLanguageModelCompletionCursor           *cursor,
+                                                              size_t                                       num_iterations,
+                                                              size_t                                       stream_chunk_size,
+                                                              GCancellable                                *cancellable,
+                                                              GGMLLanguageModelCompletionCursorStreamFunc  stream_func,
+                                                              gpointer                                     stream_func_data,
+                                                              GDestroyNotify                               stream_func_data_destroy,
+                                                              GAsyncReadyCallback                          callback,
+                                                              gpointer                                     user_data);
+
+gboolean ggml_language_model_completion_cursor_exec_stream_finish (GGMLLanguageModelCompletionCursor  *cursor,
+                                                                   GAsyncResult                       *result,
+                                                                   GError                            **error);
+
+/* Simpler API that does not use streaming */
+void ggml_language_model_completion_cursor_exec_async (GGMLLanguageModelCompletionCursor           *cursor,
+                                                       size_t                                       num_iterations,
+                                                       GCancellable                                *cancellable,
+                                                       GAsyncReadyCallback                          callback,
+                                                       gpointer                                     user_data);
+char * ggml_language_model_completion_cursor_exec_finish (GGMLLanguageModelCompletionCursor  *cursor,
+                                                          GAsyncResult                       *result,
+                                                          gboolean                           *out_is_complete_eos,
+                                                          GError                            **error);
+
+/* Execution */
+char * ggml_language_model_completion_cursor_exec (GGMLLanguageModelCompletionCursor  *cursor,
+                                                   int32_t                             num_iterations,
+                                                   GCancellable                       *cancellable,
+                                                   gboolean                           *out_is_complete_eos,
+                                                   GError                            **error);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModel, ggml_language_model_unref)
 

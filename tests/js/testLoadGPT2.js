@@ -432,8 +432,26 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.complete('The meaning of life is:', 7, null)).toEqual(
+    expect(language_model.create_completion('The meaning of life is:', 7).exec(7, null)).toEqual(
       ['The meaning of life is: to live in a world of abundance', false]
+    );
+  });
+  it('can resume a forward pass through some data', function() {
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2P177M,
+      istream,
+      null,
+      null
+    );
+    const cursor = language_model.create_completion('The meaning of life is:', 7);
+
+    expect(cursor.exec(4, null)).toEqual(
+      ['The meaning of life is: to live in a', false]
+    );
+    expect(cursor.exec(3, null)).toEqual(
+      [' world of abundance', false]
     );
   });
   it('can handle cancellation', function() {
@@ -450,7 +468,34 @@ describe('GGML GPT2', function() {
     cancellable.cancel();
 
     // Not the best test, but can't figure out how to match the error exactly
-    expect(() => language_model.complete('The meaning of life is:', 7, cancellable)).toThrow();
+    expect(() => language_model.create_completion('The meaning of life is:', 7).exec(7, cancellable)).toThrow();
+  });
+  it('can do a forward pass through some data and stream the result', function(done) {
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2P177M,
+      istream,
+      null,
+      null
+    );
+    const cursor = language_model.create_completion('The meaning of life is:', 7);
+
+    let completion_tokens = [];
+
+    cursor.exec_stream_async(
+      7,
+      5,
+      null,
+      (part, is_complete_eos) => completion_tokens.push(part),
+      (src, res) => {
+        expect(cursor.exec_stream_finish(res)).toEqual(true);
+        expect(completion_tokens.join('')).toEqual(
+          'The meaning of life is: to live in a world of abundance'
+        );
+        done();
+      }
+    );
   });
   it('can do a forward pass through some data asynchronously', function(done) {
     const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
@@ -461,27 +506,18 @@ describe('GGML GPT2', function() {
       null,
       null
     );
+    const cursor = language_model.create_completion('The meaning of life is:', 7);
 
     let completion_tokens = [];
 
-    let thread = language_model.complete_async(
-      'The meaning of life is:',
+    cursor.exec_async(
       7,
-      5,
       null,
       (src, res) => {
-        const [part, is_complete, is_complete_eos] = language_model.complete_finish(res);
-        completion_tokens.push(part);
-
-        if (is_complete) {
-          expect(completion_tokens.join('')).toEqual(
-            'The meaning of life is: to live in a world of abundance'
-          );
-          done();
-        }
+        expect(cursor.exec_finish(res)).toEqual(['The meaning of life is: to live in a world of abundance', false]);
+        done();
       }
     );
-    thread.join();
   });
   it('can handle cancellation on asynchronous completions', (done) => {
     const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
@@ -492,31 +528,22 @@ describe('GGML GPT2', function() {
       null,
       null
     );
+    const cursor = language_model.create_completion('The meaning of life is:', 7);
 
-    let callbackTimes = 0;
     let cancellable = new Gio.Cancellable({});
     /* We immediately cancel to avoid a race condition where
      * we get the first part back without cancellation */
-    let thread = language_model.complete_async(
-      'The meaning of life is:',
+    cursor.exec_stream_async(
       7,
       5,
       cancellable,
+      (decoded, is_complete_eos) => null,
       (src, res) => {
-        /* We get back the prompt on the first callback, the second one is cancelled */
-        if (callbackTimes++ == 0)
-          {
-            expect(language_model.complete_finish(res)).toEqual(['The meaning of life is:', false, false])
-          }
-        else if (callbackTimes++ == 1)
-          {
-            expect(() => language_model.complete_finish(res)).toThrow();
-          }
+        expect(() => cursor.exec_stream_finish(res)).toThrow();
         done();
       }
     );
     cancellable.cancel();
-    thread.join();
   });
   it('can do a forward pass defined in JS through some data', function() {
     const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
@@ -539,7 +566,7 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.complete('The meaning of life is:', 7, null)).toEqual(
+    expect(language_model.create_completion('The meaning of life is:', 7).exec(7, null)).toEqual(
       ['The meaning of life is: to live in a world of abundance', false]
     );
   });
@@ -558,7 +585,7 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.complete('The meaning of life is:', 7, null)[0]).toMatch(
+    expect(language_model.create_completion('The meaning of life is:', 7).exec(7, null)[0]).toMatch(
       /The meaning of life is\: to live in a state of (being|peace)/,
     );
   });
