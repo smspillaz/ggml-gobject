@@ -34,7 +34,7 @@ TEST(Tokenize, simple_string)
     NULL
   };
   g_autoptr(GGMLTokenDictionary) token_dictionary = ggml_token_dictionary_new (dictionary_strings);
-  int32_t *tokens_array;
+  g_autofree int32_t *tokens_array;
   size_t tokens_array_len;
 
   std::vector<int32_t> expected_tokens = {2, 0, 1, 0, 1};
