@@ -1517,8 +1517,7 @@ ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageModel   
                                                      GGMLModelConfig           *model_config,
                                                      GCancellable              *cancellable,
                                                      GAsyncReadyCallback        callback,
-                                                     gpointer                   user_data,
-                                                     GError                   **error)
+                                                     gpointer                   user_data)
 {
   ggml_language_model_load_from_istream_async (istream,
                                                model_config,

@@ -104,8 +104,7 @@ void ggml_language_model_load_defined_from_istream_async (GGMLDefinedLanguageMod
                                                           GGMLModelConfig           *model_config,
                                                           GCancellable              *cancellable,
                                                           GAsyncReadyCallback        callback,
-                                                          gpointer                   user_data,
-                                                          GError                   **error);
+                                                          gpointer                   user_data);
 GGMLLanguageModel *ggml_language_model_load_defined_from_istream_finish (GAsyncResult  *result,
                                                                          GError       **error);
 
