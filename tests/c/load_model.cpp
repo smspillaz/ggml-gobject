@@ -19,6 +19,8 @@
  */
 
 #include <vector>
+#include <tuple>
+#include <memory>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -86,6 +88,80 @@ TEST(LanguageModel, load_defined_gpt2_weights)
   ASSERT_EQ (error, nullptr);
 }
 
+typedef void (*MainLoopCallback) (GMainLoop *loop);
+
+typedef struct {
+  GMainLoop *loop;
+  MainLoopCallback callback;
+} WithinMainLoopData;
+
+static WithinMainLoopData *
+within_main_loop_data_new (GMainLoop *loop,
+                           MainLoopCallback callback)
+{
+  WithinMainLoopData *data = g_new0 (WithinMainLoopData, 1);
+  data->loop = g_main_loop_ref (loop);
+  data->callback = callback;
+
+  return data;
+}
+
+static void
+within_main_loop_data_free (WithinMainLoopData *data)
+{
+  g_clear_pointer (&data->loop, g_main_loop_unref);
+  g_clear_pointer (&data, g_free);
+}
+
+static void
+within_main_loop (MainLoopCallback initial_callback)
+{
+  g_autoptr(GMainLoop) loop = g_main_loop_new (NULL, TRUE);
+  WithinMainLoopData *data = within_main_loop_data_new (loop, initial_callback);
+  g_idle_add ([](gpointer data) -> gboolean {
+    WithinMainLoopData *within_data = (WithinMainLoopData *) data;
+    within_data->callback (g_steal_pointer (&within_data->loop));
+    within_main_loop_data_free (within_data);
+    return G_SOURCE_REMOVE;
+  }, data);
+  g_main_loop_run (loop);
+}
+
+TEST(LanguageModel, load_defined_gpt2_weights_async)
+{
+  within_main_loop ([](GMainLoop *loop) -> void {
+    g_autoptr(GError) error = nullptr;
+    g_autoptr(GGMLCachedModelIstream) istream = ggml_language_model_stream_from_cache (
+      GGML_DEFINED_LANGUAGE_MODEL_GPT2P117M,
+      &error
+    );
+
+    ASSERT_NE (istream, nullptr);
+    ASSERT_EQ (error, nullptr);
+
+    ggml_language_model_load_defined_from_istream_async (
+      GGML_DEFINED_LANGUAGE_MODEL_GPT2P117M,
+      G_INPUT_STREAM (istream),
+      nullptr,
+      nullptr,
+      [](GObject *src, GAsyncResult *result, gpointer data) -> void {
+        g_autoptr(GError) error = NULL;
+        g_autoptr(GMainLoop) loop = (GMainLoop *) data;
+        g_autoptr(GGMLLanguageModel) language_model = ggml_language_model_load_defined_from_istream_finish (
+          result,
+          &error
+        );
+
+        EXPECT_EQ (error, nullptr);
+        EXPECT_NE (language_model, nullptr);
+
+        g_main_loop_quit (loop);
+      },
+      loop
+    );
+  });
+}
+
 TEST(LanguageModel, run_inference_gpt2_sync)
 {
   g_autoptr(GError) error = nullptr;
@@ -119,6 +195,67 @@ TEST(LanguageModel, run_inference_gpt2_sync)
 
   ASSERT_EQ (error, nullptr);
   EXPECT_EQ (completion, "The meaning of life is: to live in a world of abundance");
+}
+
+TEST(LanguageModel, run_inference_gpt2_async)
+{
+  within_main_loop ([](GMainLoop *loop) -> void {
+    g_autoptr(GError) error = nullptr;
+    g_autoptr(GGMLCachedModelIstream) istream = ggml_language_model_stream_from_cache (
+      GGML_DEFINED_LANGUAGE_MODEL_GPT2P117M,
+      &error
+    );
+
+    ASSERT_NE (istream, nullptr);
+    ASSERT_EQ (error, nullptr);
+
+    g_autoptr(GGMLLanguageModel) language_model = ggml_language_model_load_defined_from_istream (
+      GGML_DEFINED_LANGUAGE_MODEL_GPT2P117M,
+      G_INPUT_STREAM (istream),
+      nullptr,
+      nullptr,
+      &error
+    );
+
+    ASSERT_NE (language_model, nullptr);
+    ASSERT_EQ (error, nullptr);
+
+    g_autoptr(GGMLLanguageModelCompletionCursor) cursor = ggml_language_model_create_completion (
+      language_model,
+      "The meaning of life is:",
+      7
+    );
+
+    typedef std::tuple <GMainLoop *, GGMLLanguageModelCompletionCursor *> ClosureData;
+
+    ggml_language_model_completion_cursor_exec_async (
+      cursor,
+      7,
+      nullptr,
+      [](GObject *src, GAsyncResult *res, gpointer data) -> void {
+        g_autoptr(GError) error = NULL;
+        g_autoptr(GMainLoop) loop = NULL;
+        g_autoptr(GGMLLanguageModelCompletionCursor) cursor = NULL;
+
+        std::unique_ptr<ClosureData> closure_data ((ClosureData *) data);
+        std::tie (loop, cursor) = *closure_data;
+
+        gboolean is_complete_eos;
+        std::string completion (ggml_language_model_completion_cursor_exec_finish (cursor,
+                                                                                   res,
+                                                                                   &is_complete_eos,
+                                                                                   &error));
+        EXPECT_EQ (error, nullptr);
+        EXPECT_EQ (completion, "The meaning of life is: to live in a world of abundance");
+
+        g_main_loop_quit (loop);
+      },
+      new ClosureData (
+        g_steal_pointer (&loop),
+        ggml_language_model_completion_cursor_ref (cursor)
+      )
+    );
+  });
 }
 
 TEST(LanguageModel, run_inference_gpt2_sync_parts)
