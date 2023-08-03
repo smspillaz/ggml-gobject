@@ -287,6 +287,9 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       }
       else if (this._textBufferState === STATE_WAITING) {
         resetState();
+      } else if (this._textBufferState == STATE_TEXT_EDITOR) {
+        this._cursor = null;
+        System.gc();
       }
     };
     const predictFunc = (cursor, n_tokens, prompt, textBuffer) => {
