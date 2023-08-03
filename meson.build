@@ -35,5 +35,6 @@ soup = dependency('libsoup-3.0')
 ggml_gobject_inc = include_directories('.')
 
 subdir('ggml-gobject')
+subdir('service')
 subdir('tests')
 subdir('examples')
