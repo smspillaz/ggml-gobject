@@ -23,6 +23,7 @@
 #include <gio/gio.h>
 #include <gio/gunixinputstream.h>
 #include <gio/gunixoutputstream.h>
+#include <gio/gunixfdlist.h>
 #include <ggml-gobject/ggml-language-model-service-dbus.h>
 #include <ggml-gobject/ggml-gobject.h>
 
