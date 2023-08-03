@@ -551,7 +551,10 @@ ggml_language_model_complete_monitor_state_unref (GGMLLanguageModelCompleteMonit
     {
       /* Assuming here that we will have called the callback
        * at the end */
-      g_clear_pointer (&state->stream_func_data, state->stream_func_data_destroy);
+      if (state->stream_func_data_destroy != NULL)
+        {
+          g_clear_pointer (&state->stream_func_data, state->stream_func_data_destroy);
+        }
 
       g_clear_pointer (&state, g_free);
     }
@@ -688,7 +691,7 @@ ggml_language_model_create_completion (GGMLLanguageModel *language_model,
  * @cancellable: (transfer none) (nullable): A #GCancellable
  * @stream_func: A #GGMLLanguageModelCompletionCursorStreamFunc to stream the results to
  * @stream_func_data: (closure stream_func): User data for the @stream_func
- * @stream_func_data_destroy: (destroy stream_func): A #GDestroyNotify for @stream_func_data
+ * @stream_func_data_destroy: (destroy stream_func) (nullable): A #GDestroyNotify for @stream_func_data
  * @callback: A #GAsyncReadyCallback called once the operation is complete
  * @user_data: (closure callback): Some user data for @callback
  *
