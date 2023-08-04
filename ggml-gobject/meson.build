@@ -74,7 +74,7 @@ ggml_gobject_lib = shared_library(
   soversion: api_version,
   install: true,
   include_directories: [ ggml_gobject_inc ],
-  dependencies: [ glib, gobject, gio, ggml, m_dep, soup ]
+  dependencies: [ glib, gobject, gio, gio_unix, ggml, m_dep, soup ]
 )
 
 introspection_sources = [
