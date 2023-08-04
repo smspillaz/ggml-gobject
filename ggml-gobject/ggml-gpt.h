@@ -54,6 +54,7 @@ GGMLModelDescNode * ggml_create_gpt2_model_desc (int32_t n_vocab,
 GGMLModelDescNode * ggml_create_gpt2_model_desc_from_hyperparameters (GGMLHyperparameters *hyperparameters);
 const char ** ggml_gpt_model_quantization_regexes (void);
 
+size_t ggml_gpt_model_forward_pass_estimate_memory_buffer_size (size_t n_tokens);
 GBytes * ggml_gpt_model_forward_pass_create_memory_buffer (size_t n_tokens);
 
 G_END_DECLS
