@@ -460,6 +460,19 @@ ggml_language_model_complete_cursor_thread_loop (gpointer data)
 
   int32_t current_chunk_index = 0;
 
+  if (state->cursor->execution_memory == NULL)
+    {
+      /* We probably need to save the flattened_desc here and wait
+       * until the first round in order to properly estimate all the memory */
+      g_autoptr(GHashTable) flattened_memory_desc = ggml_model_desc_node_flatten (state->cursor->language_model->memory_desc_node);
+      g_autoptr(GHashTable) memory_weight_set = ggml_new_weight_set_from_flattened_desc (NULL, flattened_memory_desc);
+
+      state->cursor->execution_memory = ggml_execution_memory_new (
+        ggml_gpt_model_forward_pass_estimate_memory_buffer_size (state->cursor->max_completion_tokens),
+        memory_weight_set
+      );
+    }
+
   for (; n_completed_iterations < state->iterations; ++n_completed_iterations)
     {
       int32_t *forward_input_tokens_ptr = NULL;
@@ -718,13 +731,8 @@ ggml_language_model_create_completion (GGMLLanguageModel *language_model,
                                        size_t             max_completion_tokens)
 {
   GGMLLanguageModelCompletionCursor *cursor = g_new0 (GGMLLanguageModelCompletionCursor, 1);
-  g_autoptr(GHashTable) flattened_memory_desc = ggml_model_desc_node_flatten (language_model->memory_desc_node);
-  g_autoptr(GHashTable) memory_weight_set = ggml_new_weight_set_from_flattened_desc (NULL, flattened_memory_desc);
   cursor->language_model = ggml_language_model_ref (language_model);
-  cursor->execution_memory = ggml_execution_memory_new (
-    ggml_gpt_model_forward_pass_estimate_memory_buffer_size (max_completion_tokens),
-    memory_weight_set
-  );
+  cursor->execution_memory = NULL;
   cursor->prompt = g_strdup (prompt);
   cursor->max_completion_tokens = max_completion_tokens;
   cursor->memory_position = 0;
