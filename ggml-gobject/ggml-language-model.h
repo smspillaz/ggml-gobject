@@ -26,6 +26,7 @@
 #include <gio/gio.h>
 #include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-hyperparameters.h>
+#include <ggml-gobject/ggml-model-desc.h>
 #include <ggml-gobject/ggml-model-config.h>
 #include <ggml-gobject/ggml-model.h>
 #include <ggml-gobject/ggml-token-dictionary.h>
@@ -50,9 +51,45 @@ GType ggml_language_model_get_type (void);
 GGMLLanguageModel *
 ggml_language_model_new (GGMLHyperparameters *hyperparameters,
                          GGMLTokenDictionary *dictionary,
-                         GGMLModel *model);
+                         GGMLModel           *model,
+                         GGMLModelDescNode   *memory_desc_node);
 GGMLLanguageModel *ggml_language_model_ref (GGMLLanguageModel *language_model);
 void ggml_language_model_unref (GGMLLanguageModel *language_model);
+
+typedef struct {
+  GGMLModelDescNode *weights_desc;
+  GGMLModelDescNode *memory_desc;
+} GGMLLanguageModelDesc;
+
+#define GGML_TYPE_LANGUAGE_MODEL_DESC (ggml_language_model_desc_get_type ())
+GType ggml_language_model_desc_get_type (void);
+
+GGMLLanguageModelDesc * ggml_language_model_desc_new (GGMLModelDescNode *weights_desc_node,
+                                                      GGMLModelDescNode *memory_desc_node);
+
+GGMLLanguageModelDesc * ggml_language_model_desc_copy (GGMLLanguageModelDesc *language_model_desc);
+void ggml_language_model_desc_free (GGMLLanguageModelDesc *language_model_desc);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelDesc, ggml_language_model_desc_free);
+
+/**
+ * GGMLModelDescFromHyperparametersFunc:
+ * @param hyperparameters: (transfer none): A #GGMLHyperparameters
+ * @param user_data: (transfer none) (closure): A gpointer containing user-specified data
+ *
+ * Create a new #GGMLLanguageModelDesc from a #GGMLHyperparameters
+ *
+ * In general you would specify a callback matching this function signature
+ * in order to create the model given some hyperparameters read from a file.
+ *
+ * Returns: (transfer full): A new #GGMLLanguageModelDesc describing the per-model weights
+ *          which can be shared across multiple inference instances and also the per-instance
+ *          weights which can't be shared
+ */
+typedef GGMLLanguageModelDesc *(*GGMLModelDescFromHyperparametersFunc) (
+    GGMLHyperparameters *hyperparameters,
+    gpointer user_data
+);
 
 gboolean ggml_language_model_consume_istream_magic (GInputStream *istream,
                                                     GCancellable *cancellable,

@@ -25,6 +25,7 @@
 #include <glib-object.h>
 #include <gio/gio.h>
 #include <ggml-gobject/ggml-compute-graph.h>
+#include <ggml-gobject/ggml-execution-memory.h>
 #include <ggml-gobject/ggml-hyperparameters.h>
 #include <ggml-gobject/ggml-model-desc.h>
 #include <ggml-gobject/ggml-tensor.h>
@@ -43,7 +44,7 @@ GType ggml_model_get_type (void);
  * @inputs: (transfer none): A #GVariant with inputs used for the forward computation
  * @input_parameters: (nullable) (element-type utf8 int): A #GHashTable with some parameters for the input
  * @compute_graph: (transfer none): A #GGMLComputeGraph which can be added to.
- * @mem_buffer: (transfer none) (nullable): A #GBytes memory buffer to be re-used.
+ * @execution_memory: (transfer none) (nullable): A #GGMLExecutionMemory memory buffer to be re-used.
  * @user_data: (closure): A closure with user data to evaluate the function
  * @error: A #GError out-variable
  *
@@ -59,7 +60,7 @@ typedef GGMLTensor * (*GGMLModelForwardFunc) (GGMLModel   *model,
                                               GVariant    *inputs,
                                               GHashTable  *input_parameters,
                                               GGMLComputeGraph *compute_graph,
-                                              GBytes      *mem_buffer,
+                                              GGMLExecutionMemory *execution_memory,
                                               gpointer     user_data,
                                               GError     **error);
 
@@ -70,7 +71,7 @@ GGMLTensor *ggml_model_forward (GGMLModel *model,
                                 GGMLHyperparameters *hyperparameters,
                                 GVariant *inputs,
                                 GHashTable *forward_parameters,
-                                GBytes   *mem_buffer,
+                                GGMLExecutionMemory *execution_memory,
                                 GCancellable *cancellable,
                                 GError **error);
 

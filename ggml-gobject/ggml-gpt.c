@@ -438,6 +438,24 @@ ggml_create_gpt2_model_desc (int32_t n_vocab,
       g_hash_table_insert (model_parameters, g_strdup_printf("h%d", i), layer_node);
     }
 
+  g_autoptr(GGMLModelDescNode) model_node = ggml_model_desc_node_new (NULL, model_parameters);
+
+  g_autoptr(GHashTable) root_parameters = g_hash_table_new_full (g_str_hash,
+                                                                 g_str_equal,
+                                                                 g_free,
+                                                                 (GDestroyNotify) ggml_model_desc_node_unref);
+  g_hash_table_insert (root_parameters, g_strdup ("model"), g_steal_pointer (&model_node));
+
+  g_autoptr(GGMLModelDescNode) root = ggml_model_desc_node_new (NULL, root_parameters);
+
+  return g_steal_pointer (&root);
+}
+
+static GGMLModelDescNode *
+ggml_create_gpt2_memory_desc (int32_t d_model,
+                              int32_t n_layer,
+                              int32_t n_ctx)
+{
   int64_t memory_size[] = { n_layer * n_ctx * d_model };
   g_autoptr(GGMLModelDescNode) memory_k_node = ggml_model_desc_node_new_leaf (memory_size, 1, GGML_DATA_TYPE_F32);
   g_autoptr(GGMLModelDescNode) memory_v_node = ggml_model_desc_node_new_leaf (memory_size, 1, GGML_DATA_TYPE_F32);
@@ -447,15 +465,12 @@ ggml_create_gpt2_model_desc (int32_t n_vocab,
                                                                    (GDestroyNotify) ggml_model_desc_node_unref);
   g_hash_table_insert (memory_parameters, g_strdup("k"), g_steal_pointer (&memory_k_node));
   g_hash_table_insert (memory_parameters, g_strdup("v"), g_steal_pointer (&memory_v_node));
-
   g_autoptr(GGMLModelDescNode) memory_node = ggml_model_desc_node_new (NULL, memory_parameters);
-  g_autoptr(GGMLModelDescNode) model_node = ggml_model_desc_node_new (NULL, model_parameters);
 
   g_autoptr(GHashTable) root_parameters = g_hash_table_new_full (g_str_hash,
                                                                  g_str_equal,
                                                                  g_free,
                                                                  (GDestroyNotify) ggml_model_desc_node_unref);
-  g_hash_table_insert (root_parameters, g_strdup ("model"), g_steal_pointer (&model_node));
   g_hash_table_insert (root_parameters, g_strdup ("memory"), g_steal_pointer (&memory_node));
 
   g_autoptr(GGMLModelDescNode) root = ggml_model_desc_node_new (NULL, root_parameters);
@@ -472,14 +487,23 @@ ggml_create_gpt2_model_desc (int32_t n_vocab,
  *
  * Returns: (transfer full): A new #GGMLModelDescNode
  */
-GGMLModelDescNode *
-ggml_create_gpt2_model_desc_from_hyperparameters (GGMLHyperparameters *hyperparameters)
+GGMLLanguageModelDesc *
+ggml_create_gpt2_model_desc_from_hyperparameters (GGMLHyperparameters  *hyperparameters)
 {
-  return ggml_create_gpt2_model_desc (ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab"),
-                                      ggml_hyperparameters_get_int32 (hyperparameters, "n_embd"),
-                                      ggml_hyperparameters_get_int32 (hyperparameters, "n_embd") * 4,
-                                      ggml_hyperparameters_get_int32 (hyperparameters, "n_layer"),
-                                      ggml_hyperparameters_get_int32 (hyperparameters, "n_ctx"));
+  g_autoptr(GGMLModelDescNode) weights = ggml_create_gpt2_model_desc (
+    ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab"),
+    ggml_hyperparameters_get_int32 (hyperparameters, "n_embd"),
+    ggml_hyperparameters_get_int32 (hyperparameters, "n_embd") * 4,
+    ggml_hyperparameters_get_int32 (hyperparameters, "n_layer"),
+    ggml_hyperparameters_get_int32 (hyperparameters, "n_ctx")
+  );
+  g_autoptr(GGMLModelDescNode) memory_weights = ggml_create_gpt2_memory_desc (
+    ggml_hyperparameters_get_int32 (hyperparameters, "n_embd"),
+    ggml_hyperparameters_get_int32 (hyperparameters, "n_layer"),
+    ggml_hyperparameters_get_int32 (hyperparameters, "n_ctx")
+  );
+
+  return ggml_language_model_desc_new (weights, memory_weights);
 }
 
 int32_t *
@@ -523,13 +547,11 @@ arange_int32 (int32_t start, int32_t stop)
  * @input_parameters: (transfer none) (element-type utf8 int): A #GHashTable with per-pass parameters.
  *                    Should contain at least "n_past".
  * @cgraph: (transfer none): A #GGMLComputeGraph
- * @mem_buffer: (transfer none) (nullable): A #GBytes containing enough memory for this forward pass to
- *              be executed. The @mem_buffer must be sufficiently large to carry at least all the intermediate
- *              results of one forward pass. This argument can be %NULL, but if you are running the forward pass
- *              in autoregressive mode, then providing it can result in a big speedup because we can skip a lot
- *              of allocation. We also assume that nobody else is using @bytes. This function will overwrite
- *              things in @bytes, and another thread shouldn't overwrite its data.
- * @user_data: (skip): Some user data, unsued.
+ * @execution_memory: (transfer none): A #GGMLExecutionMemory containing enough memory for this forward pass to
+ *              be executed. The @execution_memory must be sufficiently large to carry at least all the intermediate
+ *              results of one forward pass. We also assume that nobody else is using @execution_memory.
+ *              This function will overwrite things in @execution_memory, and another thread shouldn't overwrite its data.
+ * @user_data: (skip): Some user data, unused.
  * @error: A #GError out variable
  *
  * Computes the forward pass compute-graph for a GPT-decoder model from @inputs. We assume that the model
@@ -549,7 +571,7 @@ ggml_gpt_model_forward_pass (GGMLModel *model,
                              GVariant *inputs,
                              GHashTable *input_parameters,
                              GGMLComputeGraph *cgraph,
-                             GBytes *mem_buffer,
+                             GGMLExecutionMemory *memory,
                              gpointer user_data,
                              GError **error)
 {
@@ -559,20 +581,19 @@ ggml_gpt_model_forward_pass (GGMLModel *model,
   const int32_t nhead = ggml_hyperparameters_get_int32 (hyperparameters, "n_head");
   const int32_t n_past = GPOINTER_TO_INT (g_hash_table_lookup (input_parameters, "n_past"));
 
+  GHashTable *memory_key_values = ggml_execution_memory_get_key_value_memory (memory);
+  g_autoptr(GGMLContext) context = ggml_execution_memory_create_context (memory);
+
   /* We save things in the memory so that we dont have to constantly
    * recompute past keys and values that we've already computed during
    * the decoding process. */
-  GGMLTensor *memory_k = ggml_model_get (model, "memory/k");
-  GGMLTensor *memory_v = ggml_model_get (model, "memory/v");
+  GGMLTensor *memory_k = g_hash_table_lookup (memory_key_values, "memory/k");
+  GGMLTensor *memory_v = g_hash_table_lookup (memory_key_values, "memory/v");
 
   size_t n_tokens;
   g_autofree int32_t *input_tokens = read_array_from_variant (inputs, &n_tokens);
   g_autofree int32_t *positions = arange_int32 (n_past, n_past + n_tokens);
 
-  g_autoptr(GBytes) context_mem_buffer = (
-    mem_buffer != NULL ? g_bytes_ref (mem_buffer) : ggml_gpt_model_forward_pass_create_memory_buffer (n_tokens)
-  );
-  g_autoptr(GGMLContext) context = ggml_context_new_from_mem_buffer (context_mem_buffer);
   g_autoptr(GGMLTensor) embedding_indices = ggml_context_new_tensor_1d (context, GGML_DATA_TYPE_I32, n_tokens);
   ggml_tensor_set_data_from_int32_array (embedding_indices, input_tokens, n_tokens);
 

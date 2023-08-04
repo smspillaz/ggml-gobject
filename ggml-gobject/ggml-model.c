@@ -835,7 +835,7 @@ ggml_model_unref (GGMLModel *model)
  * @hyperparameters: (transfer none) (nullable): A #GGMLHyperparameters for the model
  * @inputs: (transfer none): An #GVariant with some inputs
  * @forward_parameters: (element-type utf8 int) (transfer none) (nullable): A #GHashTable with evaluation-specific parameters
- * @mem_buffer: (transfer none) (nullable): A #GBytes memory buffer that can be re-used.
+ * @execution_memory: (transfer none) (nullable): A #GBytes memory buffer that can be re-used.
  * @cancellable: (transfer none) (nullable): A #GCancellable
  * @error: A #GError out-parameter
  *
@@ -848,7 +848,7 @@ ggml_model_forward (GGMLModel *model,
                     GGMLHyperparameters *hyperparameters,
                     GVariant *inputs,
                     GHashTable *forward_parameters,
-                    GBytes   *mem_buffer,
+                    GGMLExecutionMemory *execution_memory,
                     GCancellable *cancellable,
                     GError **error)
 {
@@ -858,7 +858,7 @@ ggml_model_forward (GGMLModel *model,
                                                          inputs,
                                                          forward_parameters,
                                                          compute_graph,
-                                                         mem_buffer,
+                                                         execution_memory,
                                                          model->forward_func_user_data,
                                                          error);
 

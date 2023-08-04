@@ -26,51 +26,58 @@ const { GLib, Gio, GObject, GGML } = imports.gi;
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 100000;
 
 function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
-  return GGML.ModelDescNode.new(
-    null,
-    {
-      "model": GGML.ModelDescNode.new(
-        null,
-        {
-          "ln_f/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-          "ln_f/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-          "wte": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
-          "wpe": GGML.ModelDescNode.new_leaf([d_model, n_ctx], GGML.DataType.F32),
-          "lm_head": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
-          ...Object.fromEntries(
-            [...Array(n_layers).keys()].map(
-            i => [
-              `h${i}`,
-              GGML.ModelDescNode.new(null, {
-                "ln_1/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "ln_1/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "ln_2/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "ln_2/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "attn/c_attn/w": GGML.ModelDescNode.new_leaf([d_model, 3 * d_model], GGML.DataType.F16),
-                "attn/c_attn/b": GGML.ModelDescNode.new_leaf([3 * d_model], GGML.DataType.F32),
-                "attn/c_proj/w": GGML.ModelDescNode.new_leaf([d_model, d_model], GGML.DataType.F16),
-                "attn/c_proj/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "mlp/c_fc/w": GGML.ModelDescNode.new_leaf([d_model, d_ff], GGML.DataType.F16),
-                "mlp/c_fc/b": GGML.ModelDescNode.new_leaf([d_ff], GGML.DataType.F32),
-                "mlp/c_proj/w": GGML.ModelDescNode.new_leaf([d_ff, d_model], GGML.DataType.F16),
-                "mlp/c_proj/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-              })
-            ])
-          )
-        }
-      ),
-      "memory": GGML.ModelDescNode.new(
-        null,
-        {
-          "k": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
-          "v": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
-        }
-      )
-    }
+  return GGML.LanguageModelDesc.new(
+    GGML.ModelDescNode.new(
+      null,
+      {
+        "model": GGML.ModelDescNode.new(
+          null,
+          {
+            "ln_f/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+            "ln_f/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+            "wte": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
+            "wpe": GGML.ModelDescNode.new_leaf([d_model, n_ctx], GGML.DataType.F32),
+            "lm_head": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
+            ...Object.fromEntries(
+              [...Array(n_layers).keys()].map(
+              i => [
+                `h${i}`,
+                GGML.ModelDescNode.new(null, {
+                  "ln_1/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "ln_1/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "ln_2/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "ln_2/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "attn/c_attn/w": GGML.ModelDescNode.new_leaf([d_model, 3 * d_model], GGML.DataType.F16),
+                  "attn/c_attn/b": GGML.ModelDescNode.new_leaf([3 * d_model], GGML.DataType.F32),
+                  "attn/c_proj/w": GGML.ModelDescNode.new_leaf([d_model, d_model], GGML.DataType.F16),
+                  "attn/c_proj/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "mlp/c_fc/w": GGML.ModelDescNode.new_leaf([d_model, d_ff], GGML.DataType.F16),
+                  "mlp/c_fc/b": GGML.ModelDescNode.new_leaf([d_ff], GGML.DataType.F32),
+                  "mlp/c_proj/w": GGML.ModelDescNode.new_leaf([d_ff, d_model], GGML.DataType.F16),
+                  "mlp/c_proj/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                })
+              ])
+            )
+          }
+        )
+      }
+    ),
+    GGML.ModelDescNode.new(
+      null,
+      {
+        "memory": GGML.ModelDescNode.new(
+          null,
+          {
+            "k": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
+            "v": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
+          }
+        )
+      }
+    )
   );
 }
 
-const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph, mem_buffer) => {
+const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph, execution_memory) => {
   const [n_vocab, n_embd, n_ff, n_layer, n_ctx, nhead, ftype] = [
     hyperparameters.get_int32('n_vocab'),
     hyperparameters.get_int32('n_embd'),
@@ -80,14 +87,15 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
     hyperparameters.get_int32('n_head'),
     hyperparameters.get_int32('ftype')
   ];
+  const key_value_memory = execution_memory.get_key_value_memory();
   const n_past = eval_parameters.n_past;
-  const memory_k = model.get("memory/k");
-  const memory_v = model.get("memory/v");
+  const memory_k = key_value_memory["memory/k"];
+  const memory_v = key_value_memory["memory/v"];
 
   /* We assume that this is enough memory for the context */
   const input_ids = inputs.deep_unpack();
   const n_tokens = input_ids.length;
-  const context = GGML.Context.new_from_mem_buffer(mem_buffer);
+  const context = execution_memory.create_context();
   const embedding_indices = context.new_tensor_1d(GGML.DataType.I32, n_tokens);
   embedding_indices.set_data_from_int32_array(input_ids);
   const position_indices = context.new_tensor_1d(GGML.DataType.I32, n_tokens);
