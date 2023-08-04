@@ -34,31 +34,82 @@ struct _GGMLModel {
   size_t ref_count;
 };
 
-/**
- * ggml_context_new_model_from_flattened_desc:
- * @context: A #GGMLContext
- * @flattened_desc: (element-type utf8 GGMLModelDescLeaf): A #GHashTable containing
- *                  key-value pairs of weight names and their descriptions.
- * @forward_func: (scope notified) (nullable): A #GGMLModelFowardFunc
- * @forward_func_user_data: (closure forward_func) (transfer full): The user data for @forward_func
- * @forward_func_user_data_destroy: (destroy forward_func): A #GDestroyNotify for forward_func
- *
- * Returns: (transfer full): A new #GGMLModel
- */
-GGMLModel *
-ggml_model_new_from_flattened_desc (GGMLContext *context,
-                                    GHashTable  *flattened_desc,
-                                    GGMLModelForwardFunc forward_func,
-                                    gpointer forward_func_user_data,
-                                    GDestroyNotify forward_func_user_data_destroy)
+static size_t
+ggml_estimate_tensor_size_for_type (GGMLDataType  data_type,
+                                    int64_t      *shape,
+                                    size_t        n_shape)
 {
-  GGMLModel *model = g_new0 (GGMLModel, 1);
-  model->owning_context = ggml_context_ref (context);
-  model->weights = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_tensor_unref);
-  model->forward_func = forward_func;
-  model->forward_func_user_data = forward_func_user_data;
-  model->forward_func_user_data_destroy = forward_func_user_data_destroy;
-  model->ref_count = 1;
+  size_t nb[GGML_MAX_DIMS];
+  size_t ne[GGML_MAX_DIMS];
+  size_t blk_size = ggml_blck_size (data_type);
+
+  /* The true size is the stride at the final shape index * number
+   * of elements (eg, how do we get from the beginning to the end
+   * of the tensor on the outer dimension */
+  nb[0] = ggml_type_size (data_type);
+  ne[0] = shape[0];
+  nb[1] = nb[0] * (ne[0] / blk_size);
+  ne[1] = (n_shape > 1) ? shape[1] : 1;
+
+  for (size_t i = 2; i < GGML_MAX_DIMS; ++i)
+    {
+      ne[i] = (i < n_shape) ? shape[i] : 1;
+      nb[i] = ne[i - 1] * nb[i - 1];
+    }
+
+  return ne[GGML_MAX_DIMS - 1] * nb[GGML_MAX_DIMS - 1];
+}
+
+static size_t
+ggml_estimate_model_size_from_flattened_desc (GHashTable *flattened_desc)
+{
+  gpointer key, value;
+  GHashTableIter iter;
+
+  size_t computed_size = 0;
+  size_t overhead = ggml_tensor_overhead ();
+
+  g_hash_table_iter_init (&iter, flattened_desc);
+  while (g_hash_table_iter_next (&iter, &key, &value))
+    {
+      GGMLModelDescLeaf *leaf = value;
+
+      size_t n_dims = leaf->n_dim;
+      int64_t *shape = leaf->dimensions;
+
+      /* Here we will quantize, so estimate the size of the quantized tensor */
+      computed_size += ggml_estimate_tensor_size_for_type (leaf->type,
+                                                           shape,
+                                                           n_dims) + overhead;
+    }
+
+  return computed_size;
+}
+
+/**
+ * ggml_new_weight_set_from_flattened_desc:
+ * @existing_context: (transfer none) (nullable): A #GGMLContext to allocate tensors
+ *                    from or %NULL if a new context should be created.
+ * @flattened_desc: (element-type utf8 GGMLModelDescLeaf): A #GHashTable containing
+ *                  key-value pairs of weight names and their descriptions
+ *
+ * Returns: (transfer full) (element-type utf8 GGMLTensor): A #GHashTable of names
+ *          and #GGMLTensor objects, either allocated on the @context or with an implicit
+ *          context if none is provided.
+ */
+GHashTable *
+ggml_new_weight_set_from_flattened_desc (GGMLContext *existing_context,
+                                         GHashTable  *flattened_desc)
+{
+  g_autoptr(GHashTable) weight_set = g_hash_table_new_full (g_str_hash,
+                                                            g_str_equal,
+                                                            g_free,
+                                                            (GDestroyNotify) ggml_tensor_unref);
+  g_autoptr(GGMLContext) context = (
+    existing_context != NULL ?
+    ggml_context_ref (existing_context) :
+    ggml_context_new (ggml_estimate_model_size_from_flattened_desc (flattened_desc))
+  );
 
   GHashTableIter iter;
   gpointer key, value;
@@ -84,8 +135,37 @@ ggml_model_new_from_flattened_desc (GGMLContext *context,
 
       g_assert (tensor != NULL);
       ggml_tensor_set_name (tensor, key);
-      g_hash_table_insert (model->weights, g_strdup (key), tensor);
+      g_hash_table_insert (weight_set, g_strdup (key), tensor);
     }
+
+  return g_steal_pointer (&weight_set);
+}
+
+/**
+ * ggml_model_new_from_flattened_desc:
+ * @context: A #GGMLContext
+ * @flattened_desc: (element-type utf8 GGMLModelDescLeaf): A #GHashTable containing
+ *                  key-value pairs of weight names and their descriptions.
+ * @forward_func: (scope notified) (nullable): A #GGMLModelFowardFunc
+ * @forward_func_user_data: (closure forward_func) (transfer full): The user data for @forward_func
+ * @forward_func_user_data_destroy: (destroy forward_func): A #GDestroyNotify for forward_func
+ *
+ * Returns: (transfer full): A new #GGMLModel
+ */
+GGMLModel *
+ggml_model_new_from_flattened_desc (GGMLContext *context,
+                                    GHashTable  *flattened_desc,
+                                    GGMLModelForwardFunc forward_func,
+                                    gpointer forward_func_user_data,
+                                    GDestroyNotify forward_func_user_data_destroy)
+{
+  GGMLModel *model = g_new0 (GGMLModel, 1);
+  model->owning_context = ggml_context_ref (context);
+  model->weights = ggml_new_weight_set_from_flattened_desc (context, flattened_desc);
+  model->forward_func = forward_func;
+  model->forward_func_user_data = forward_func_user_data;
+  model->forward_func_user_data_destroy = forward_func_user_data_destroy;
+  model->ref_count = 1;
 
   return model;
 }
@@ -499,58 +579,6 @@ ggml_model_load_weights_from_istream (GInputStream *istream,
     }
 
   return TRUE;
-}
-
-static size_t
-ggml_estimate_tensor_size_for_type (GGMLDataType  data_type,
-                                    int64_t      *shape,
-                                    size_t        n_shape)
-{
-  size_t nb[GGML_MAX_DIMS];
-  size_t ne[GGML_MAX_DIMS];
-  size_t blk_size = ggml_blck_size (data_type);
-
-  /* The true size is the stride at the final shape index * number
-   * of elements (eg, how do we get from the beginning to the end
-   * of the tensor on the outer dimension */
-  nb[0] = ggml_type_size (data_type);
-  ne[0] = shape[0];
-  nb[1] = nb[0] * (ne[0] / blk_size);
-  ne[1] = (n_shape > 1) ? shape[1] : 1;
-
-  for (size_t i = 2; i < GGML_MAX_DIMS; ++i)
-    {
-      ne[i] = (i < n_shape) ? shape[i] : 1;
-      nb[i] = ne[i - 1] * nb[i - 1];
-    }
-
-  return ne[GGML_MAX_DIMS - 1] * nb[GGML_MAX_DIMS - 1];
-}
-
-static size_t
-ggml_estimate_model_size_from_flattened_desc (GHashTable *flattened_desc)
-{
-  gpointer key, value;
-  GHashTableIter iter;
-
-  size_t computed_size = 0;
-  size_t overhead = ggml_tensor_overhead ();
-
-  g_hash_table_iter_init (&iter, flattened_desc);
-  while (g_hash_table_iter_next (&iter, &key, &value))
-    {
-      GGMLModelDescLeaf *leaf = value;
-
-      size_t n_dims = leaf->n_dim;
-      int64_t *shape = leaf->dimensions;
-
-      /* Here we will quantize, so estimate the size of the quantized tensor */
-      computed_size += ggml_estimate_tensor_size_for_type (leaf->type,
-                                                           shape,
-                                                           n_dims) + overhead;
-    }
-
-  return computed_size;
 }
 
 /**

@@ -96,6 +96,8 @@ GGMLModel * ggml_model_load_from_istream_finish (GAsyncResult  *result,
                                                  char        ***out_loaded_keys,
                                                  GError       **error);
 
+GHashTable * ggml_new_weight_set_from_flattened_desc (GGMLContext *existing_context,
+                                                      GHashTable  *flattened_desc);
 
 GGMLModel * ggml_model_new_from_flattened_desc (GGMLContext *context,
                                                 GHashTable  *flattened_desc,
