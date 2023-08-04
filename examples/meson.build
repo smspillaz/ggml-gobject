@@ -20,3 +20,4 @@
 
 
 subdir('llm-writer-app')
+subdir('service-client')
