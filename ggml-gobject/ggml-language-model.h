@@ -24,6 +24,7 @@
 
 #include <glib-object.h>
 #include <gio/gio.h>
+#include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-hyperparameters.h>
 #include <ggml-gobject/ggml-model-config.h>
 #include <ggml-gobject/ggml-model.h>
