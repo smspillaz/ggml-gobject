@@ -20,6 +20,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <ggml/ggml.h>
+#include <ggml/ggml-alloc.h>
+#include <ggml-gobject/ggml-context.h>
 #include <ggml-gobject/ggml-compute-graph.h>
 #include <ggml-gobject/internal/ggml-compute-plan-internal.h>
 #include <ggml-gobject/internal/ggml-context-internal.h>
@@ -73,6 +76,28 @@ ggml_compute_graph_unref (GGMLComputeGraph *compute_graph)
     {
       g_clear_pointer (&compute_graph, g_free);
     }
+}
+
+/**
+ * ggml_compute_graph_get_computation_size:
+ * @graph: A #GGMLComputeGraph
+ * @result_tensor: A #GGMLTensor representing the result of the forward pass
+ *
+ * Returns the size of the allocations done on this context.
+ *
+ * It is an error to call this on a context that was not created using
+ * %ggml_recorder_context_new
+ *
+ * Returns: The allocation size
+ */
+size_t
+ggml_compute_graph_get_computation_size (GGMLComputeGraph *graph,
+                                         GGMLTensor       *result_tensor)
+{
+  g_assert (result_tensor->owning_context->alloc != NULL);
+
+  return ggml_allocr_alloc_graph (result_tensor->owning_context->alloc,
+                                  &graph->cgraph);
 }
 
 /**
