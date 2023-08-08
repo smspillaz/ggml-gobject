@@ -193,7 +193,7 @@ ggml_tensor_set_data (GGMLTensor *tensor, char *data, size_t size)
 /**
  * ggml_tensor_get_data: (skip)
  * @tensor: A #GGMLTensor
- * @out_n_bytes: An out-parameter for the number of bytes in @tensor
+ * @out_n_bytes: (nullable): An out-parameter for the number of bytes in @tensor
  *
  * Get a view into the raw bytes of @tensor and writes the number of bytes
  * into @out_n_bytes . The data is not copied.
@@ -205,7 +205,11 @@ ggml_tensor_get_data (GGMLTensor *tensor,
                       size_t *out_n_bytes)
 {
   gpointer data = ggml_get_data (tensor->tensor);
-  *out_n_bytes =  ggml_tensor_n_bytes (tensor);
+
+  if (out_n_bytes != NULL)
+    {
+      *out_n_bytes =  ggml_tensor_n_bytes (tensor);
+    }
 
   return data;
 }
