@@ -21,6 +21,7 @@
  */
 
 #include <ggml-gobject/ggml-execution-memory.h>
+#include <ggml-gobject/ggml-model.h>
 
 struct _GGMLExecutionMemory {
   GBytes      *execution_buffer;
@@ -41,10 +42,41 @@ GGMLExecutionMemory *
 ggml_execution_memory_new (size_t      execution_memory_size,
                            GHashTable *key_value_memory)
 {
+  const size_t compute_graph_tensor_overhead = ggml_tensor_overhead () * GGML_MAX_NODES + ggml_graph_overhead ();
+  size_t mem_size = execution_memory_size + compute_graph_tensor_overhead;
   GGMLExecutionMemory *memory = g_new0 (GGMLExecutionMemory, 1);
 
-  memory->execution_buffer = g_bytes_new_take (g_malloc (execution_memory_size), execution_memory_size);
+  memory->execution_buffer = g_bytes_new_take (g_malloc (mem_size), mem_size);
   memory->key_value_memory = key_value_memory != NULL ? g_hash_table_ref (key_value_memory) : NULL;
+  memory->ref_count = 1;
+
+  return g_steal_pointer (&memory);
+}
+
+/**
+ * ggml_execution_memory_recorder_new:
+ * @memory_desc: (transfer none) (nullable): A #GGMLModelDescNode describing how the key-value
+ *               memory is laid-out.
+ *
+ * Returns: (transfer full): A new #GGMLExecutionMemory with no underlying buffer. Any context
+ *          created from this memory will be set to "recorder" mode, which records the allocations
+ *          but does not actually allocate anything.
+ */
+GGMLExecutionMemory *
+ggml_execution_memory_recorder_new (GGMLModelDescNode *memory_desc)
+{
+  GGMLExecutionMemory *memory = g_new0 (GGMLExecutionMemory, 1);
+
+  if (memory_desc != NULL)
+    {
+      g_autoptr(GHashTable) flattened_memory_desc = ggml_model_desc_node_flatten (memory_desc);
+      g_autoptr(GGMLContext) recorder_context = ggml_recorder_context_new ();
+
+      memory->execution_buffer = NULL;
+      memory->key_value_memory = ggml_new_weight_set_from_flattened_desc (recorder_context,
+                                                                          flattened_memory_desc);
+    }
+
   memory->ref_count = 1;
 
   return g_steal_pointer (&memory);
@@ -93,7 +125,20 @@ ggml_execution_memory_get_key_value_memory (GGMLExecutionMemory *execution_memor
 GGMLContext *
 ggml_execution_memory_create_context (GGMLExecutionMemory *execution_memory)
 {
-  return ggml_context_new_from_mem_buffer (execution_memory->execution_buffer);
+  /* Create recorder memory from ggml_allocr */
+  if (execution_memory->execution_buffer == NULL)
+    {
+      return ggml_recorder_context_new ();
+    }
+
+  size_t mem_size;
+  g_bytes_get_data (execution_memory->execution_buffer, &mem_size);
+
+  g_clear_pointer (&execution_memory->execution_buffer, g_bytes_unref);
+
+  execution_memory->execution_buffer = g_bytes_new_take (g_malloc (mem_size), mem_size);
+
+  return ggml_alloc_context_new (execution_memory->execution_buffer);
 }
 
 G_DEFINE_BOXED_TYPE (GGMLExecutionMemory, ggml_execution_memory, ggml_execution_memory_ref, ggml_execution_memory_unref)

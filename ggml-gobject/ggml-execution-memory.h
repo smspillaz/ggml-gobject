@@ -35,6 +35,7 @@ typedef struct _GGMLExecutionMemory GGMLExecutionMemory;
 
 GGMLExecutionMemory * ggml_execution_memory_new (size_t      execution_memory_size,
                                                  GHashTable *key_value_memory);
+GGMLExecutionMemory * ggml_execution_memory_recorder_new (GGMLModelDescNode *memory_desc);
 
 GGMLExecutionMemory * ggml_execution_memory_ref (GGMLExecutionMemory *memory);
 void ggml_execution_memory_unref (GGMLExecutionMemory *memory);
