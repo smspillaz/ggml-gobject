@@ -830,6 +830,61 @@ ggml_model_unref (GGMLModel *model)
 }
 
 /**
+ * ggml_model_build_compute_graph:
+ * @model: (transfer none): A #GGMLModel
+ * @hyperparameters: (transfer none) (nullable): A #GGMLHyperparameters for the model
+ * @inputs: (transfer none): An #GVariant with some inputs
+ * @forward_parameters: (element-type utf8 int) (transfer none) (nullable): A #GHashTable with evaluation-specific parameters
+ * @execution_memory: (transfer none) (nullable): A #GBytes memory buffer that can be re-used.
+ * @out_result_tensor: (transfer full) (out) (nullable): A #GGMLTensor with the output
+ *                     tensor placeholder as an out-parameter. Will not have
+ *                     the computed value.
+ * @error: A #GError out-parameter
+ *
+ * Builds a compute graph for this model given @inputs and also
+ * sets the output tensor in @out_result_tensor  Does not compute
+ * the result. Normally you would not need to use this function,
+ * but you can use this in case you need the graph without running
+ * the computation.
+ *
+ * Returns: (transfer full): A new #GGMLComputeGraph or %NULL with
+ *          @error set on failure.
+ */
+GGMLComputeGraph *
+ggml_model_build_graph (GGMLModel *model,
+                        GGMLHyperparameters *hyperparameters,
+                        GVariant *inputs,
+                        GHashTable *forward_parameters,
+                        GGMLExecutionMemory *execution_memory,
+                        GGMLTensor **out_result_tensor,
+                        GError **error)
+{
+  g_autoptr(GGMLComputeGraph) compute_graph = ggml_compute_graph_new ();
+  g_autoptr(GGMLTensor) output = (*model->forward_func) (model,
+                                                         hyperparameters,
+                                                         inputs,
+                                                         forward_parameters,
+                                                         compute_graph,
+                                                         execution_memory,
+                                                         model->forward_func_user_data,
+                                                         error);
+
+  if (output == NULL)
+    {
+      return NULL;
+    }
+
+  ggml_compute_graph_build_forward_expand (compute_graph, output);
+
+  if (out_result_tensor != NULL)
+    {
+      *out_result_tensor = g_steal_pointer (&output);
+    }
+
+  return g_steal_pointer (&compute_graph);
+}
+
+/**
  * ggml_model_forward:
  * @model: (transfer none): A #GGMLModel
  * @hyperparameters: (transfer none) (nullable): A #GGMLHyperparameters for the model

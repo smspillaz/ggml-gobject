@@ -67,6 +67,13 @@ typedef GGMLTensor * (*GGMLModelForwardFunc) (GGMLModel   *model,
 GGMLModel *ggml_model_ref (GGMLModel *model);
 void ggml_model_unref (GGMLModel *model);
 GGMLTensor *ggml_model_get (GGMLModel *model, const char *key);
+GGMLComputeGraph *ggml_model_build_graph (GGMLModel *model,
+                                          GGMLHyperparameters *hyperparameters,
+                                          GVariant *inputs,
+                                          GHashTable *forward_parameters,
+                                          GGMLExecutionMemory *execution_memory,
+                                          GGMLTensor **out_result_tensor,
+                                          GError **error);
 GGMLTensor *ggml_model_forward (GGMLModel *model,
                                 GGMLHyperparameters *hyperparameters,
                                 GVariant *inputs,
