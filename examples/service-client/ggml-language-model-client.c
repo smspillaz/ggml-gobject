@@ -311,7 +311,7 @@ on_created_private_connection (GObject      *source_object,
     dbus_connection,
     G_DBUS_PROXY_FLAGS_NONE,
     NULL, /* Not a bus connection */
-    "/org/ggml_gobject/LanguageModelSession",
+    "/org/ggml/LanguageModelSession",
     NULL,
     on_language_model_service_session_proxy_ready,
     g_steal_pointer (&state)
@@ -396,8 +396,8 @@ on_main_loop_started (gpointer data)
   ggml_language_model_service_proxy_new_for_bus (
     G_BUS_TYPE_SESSION,
     G_DBUS_PROXY_FLAGS_NONE,
-    "org.ggml_gobject.LanguageModelService",
-    "/org/ggml_gobject/LanguageModelService",
+    "org.ggml.ModelService",
+    "/org/ggml/ModelService",
     NULL,
     on_language_model_service_proxy_ready,
     g_steal_pointer (&state)

@@ -707,10 +707,10 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *ref,
                                                                                                                         closure->prompt,
                                                                                                                         closure->max_tokens);
 
-  g_autofree char *completion_object_path = g_strdup_printf ("/org/ggml_gobject/LanguageModelSession/%zu",
+  g_autofree char *completion_object_path = g_strdup_printf ("/org/ggml/LanguageModelSession/%zu",
                                                             closure->conn->cursor_serial++);
 
-  /* Expose the /org/ggml_gobject/LanguageModelSession/n object */
+  /* Expose the /org/ggml/LanguageModelSession/n object */
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (completion->completion_skeleton),
                                          closure->conn->dbus_connection,
                                          completion_object_path,
@@ -805,10 +805,10 @@ on_created_private_bus_server_connection (GObject      *object,
 
   g_message ("Created private connection");
 
-  /* Expose the /org/ggml_gobject/LanguageModelSession object */
+  /* Expose the /org/ggml/LanguageModelSession object */
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (conn->session),
                                          dbus_connection,
-                                         "/org/ggml_gobject/LanguageModelSession",
+                                         "/org/ggml/LanguageModelSession",
                                          &error))
     {
       g_error ("Failed to export LanguageModelSession object: %s", error->message);
@@ -910,10 +910,10 @@ on_acquired_name (GDBusConnection *connection,
 
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (state->service_skeleton),
                                          connection,
-                                         "/org/ggml_gobject/LanguageModelService",
+                                         "/org/ggml/ModelService",
                                          &error))
     {
-      g_error ("Failed to export LanguageModelService object: %s", error->message);
+      g_error ("Failed to export ModelService object: %s", error->message);
       g_main_loop_quit (state->loop);
       return;
     }
@@ -938,7 +938,7 @@ on_main_loop_started (gpointer data)
   g_message ("Started loop");
 
   g_bus_own_name (G_BUS_TYPE_SESSION,
-                  "org.ggml_gobject.LanguageModelService",
+                  "org.ggml.ModelService",
                   G_BUS_NAME_OWNER_FLAGS_REPLACE |
                   G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT,
                   on_acquired_bus,
