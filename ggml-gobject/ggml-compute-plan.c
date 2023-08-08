@@ -52,6 +52,7 @@ ggml_compute_plan_unref (GGMLComputePlan *compute_plan)
 {
   if (--compute_plan->ref_count == 0)
     {
+      g_clear_pointer (&compute_plan->cplan_work_tensor, ggml_tensor_unref);
       g_clear_pointer (&compute_plan, g_free);
     }
 }
