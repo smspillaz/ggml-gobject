@@ -313,32 +313,6 @@ ggml_nn_decoder_ar_layer (GGMLContext  *context,
   return g_steal_pointer (&mlp_residual_output);
 }
 
-/**
- * ggml_gpt_model_forward_pass_create_memory_buffer:
- * @n_tokens: Maximum number of tokens expected to be used in this forward pass.
- *
- * Returns: (transfer full): A new #GBytes with the memory buffer needed for this
- *         forward pass.
- */
-GBytes *
-ggml_gpt_model_forward_pass_create_memory_buffer (size_t n_tokens)
-{
-  size_t estimated_size = (256 * 1024 * 1024 + (2048000 * n_tokens * 11 * 2 / 10));
-  return g_bytes_new_take (g_malloc (estimated_size), estimated_size);
-}
-
-/**
- * ggml_gpt_model_forward_pass_estimate_memory_buffer_size:
- * @n_tokens: Maximum number of tokens expected to be used in this forward pass.
- *
- * Returns: The expected size of the needed memory buffer for the forward pass
- */
-size_t
-ggml_gpt_model_forward_pass_estimate_memory_buffer_size (size_t n_tokens)
-{
-  return (256 * 1024 * 1024 + (2048000 * n_tokens * 11 * 2 / 10));
-}
-
 static GGMLModelDescNode *
 ggml_create_gpt2_layer_model_desc (int32_t d_model,
                                    int32_t d_ff)

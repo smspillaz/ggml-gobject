@@ -462,13 +462,57 @@ ggml_language_model_complete_cursor_thread_loop (gpointer data)
 
   if (state->cursor->execution_memory == NULL)
     {
-      /* We probably need to save the flattened_desc here and wait
-       * until the first round in order to properly estimate all the memory */
+      g_autoptr(GGMLExecutionMemory) recorder_execution_memory = ggml_execution_memory_recorder_new (state->cursor->language_model->memory_desc_node);
+
+      /* Create an input with max_completion_tokens. We have to allocate
+       * here because creating the variant will copy */
+      g_autoptr(GArray) dummy_input_array = g_array_sized_new (FALSE,
+                                                               TRUE,
+                                                               sizeof (int32_t),
+                                                               state->cursor->max_completion_tokens);
+      g_array_set_size (dummy_input_array, state->cursor->max_completion_tokens);
+
+      g_autoptr(GVariant) dummy_inputs = g_variant_ref_sink (g_variant_new_fixed_array (G_VARIANT_TYPE_INT32,
+                                                                                        dummy_input_array->data,
+                                                                                        state->cursor->max_completion_tokens,
+                                                                                        sizeof (int32_t)));
+
+      /* In this case, n_past is always zero */
+      g_hash_table_insert (inference_parameters,
+                           (gpointer) n_past_key,
+                           GINT_TO_POINTER (state->cursor->memory_position));
+
+      /* We must first do a worst-case pass through the model to
+       * determine what the real exection memory usage is */
+      g_autoptr(GGMLTensor) output_tensor = NULL;
+      g_autoptr(GGMLComputeGraph) compute_graph = ggml_model_build_graph (
+        state->cursor->language_model->model,
+        state->cursor->language_model->hyperparameters,
+        dummy_inputs,
+        inference_parameters,
+        recorder_execution_memory,
+        &output_tensor,
+        &error
+      );
+
+      if (compute_graph == NULL)
+        {
+          ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                                    NULL,
+                                                                    FALSE,
+                                                                    FALSE,
+                                                                    g_steal_pointer (&error));
+          return GINT_TO_POINTER (FALSE);
+        }
+
+      size_t execution_memory_size = ggml_compute_graph_get_computation_size (compute_graph,
+                                                                              output_tensor);
+
       g_autoptr(GHashTable) flattened_memory_desc = ggml_model_desc_node_flatten (state->cursor->language_model->memory_desc_node);
       g_autoptr(GHashTable) memory_weight_set = ggml_new_weight_set_from_flattened_desc (NULL, flattened_memory_desc);
 
       state->cursor->execution_memory = ggml_execution_memory_new (
-        ggml_gpt_model_forward_pass_estimate_memory_buffer_size (state->cursor->max_completion_tokens),
+        execution_memory_size,
         memory_weight_set
       );
     }
