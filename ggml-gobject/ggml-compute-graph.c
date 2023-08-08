@@ -89,6 +89,19 @@ ggml_compute_graph_plan (GGMLComputeGraph *compute_graph, int n_threads)
   compute_plan->cplan = ggml_graph_plan (&compute_graph->cgraph, n_threads);
   compute_plan->ref_count = 1;
 
+  size_t buffer_size = compute_plan->cplan.work_size * sizeof (int8_t) + ggml_tensor_overhead ();
+  g_autoptr(GGMLContext) context = ggml_context_new (buffer_size);
+
+  /* We have to do some manual bookkeeping of the work size here.
+   * Do this first before allocating the graph, otherwise we'll end up
+   * getting allocated as part of some garbage-collected tensor */
+  g_autoptr(GGMLTensor) work_tensor = ggml_context_new_tensor_1d (context,
+                                                                  GGML_DATA_TYPE_I8,
+                                                                  compute_plan->cplan.work_size);
+
+  compute_plan->cplan_work_tensor = g_steal_pointer (&work_tensor);
+  compute_plan->cplan.work_data = compute_plan->cplan_work_tensor->tensor->data;
+
   return compute_plan;
 }
 
@@ -133,9 +146,8 @@ ggml_compute_graph_compute (GGMLComputeGraph  *compute_graph,
   compute_plan->cplan.abort_callback = (_Bool (*)(void*))g_cancellable_is_cancelled;
   compute_plan->cplan.abort_callback_data = cancellable;
 
-  /* We have to do some manual bookkeeping of the work size here */
-  struct ggml_tensor *buf = ggml_new_tensor_1d (context->ctx, GGML_TYPE_I8, compute_plan->cplan.work_size);
-  compute_plan->cplan.work_data = buf->data;
+  /* Allocate memory for computation */
+  ggml_allocr_alloc_graph (context->alloc, &compute_graph->cgraph);
 
   int exit_status = ggml_graph_compute (&compute_graph->cgraph, &compute_plan->cplan);
 

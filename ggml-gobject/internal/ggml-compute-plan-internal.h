@@ -31,6 +31,7 @@ G_BEGIN_DECLS
 
 struct _GGMLComputePlan {
   struct ggml_cplan cplan;
+  GGMLTensor *cplan_work_tensor;
   size_t ref_count;
 };
 
