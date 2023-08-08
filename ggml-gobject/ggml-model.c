@@ -907,17 +907,15 @@ ggml_model_forward (GGMLModel *model,
                     GCancellable *cancellable,
                     GError **error)
 {
-  g_autoptr(GGMLComputeGraph) compute_graph = ggml_compute_graph_new ();
-  g_autoptr(GGMLTensor) output = (*model->forward_func) (model,
-                                                         hyperparameters,
-                                                         inputs,
-                                                         forward_parameters,
-                                                         compute_graph,
-                                                         execution_memory,
-                                                         model->forward_func_user_data,
-                                                         error);
-
-  if (output == NULL)
+  g_autoptr(GGMLTensor) output = NULL;
+  g_autoptr(GGMLComputeGraph) compute_graph = ggml_model_build_graph (model,
+                                                                      hyperparameters,
+                                                                      inputs,
+                                                                      forward_parameters,
+                                                                      execution_memory,
+                                                                      &output,
+                                                                      error);
+  if (compute_graph == NULL)
     {
       return NULL;
     }
