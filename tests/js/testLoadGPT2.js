@@ -143,12 +143,6 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
      * means that we don't have to re-compute all the keys and values for every token
      * on each iteration, only the keys and values for the most recent token
      */
-    const k = GGML.op_view_1d(context, memory_k, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
-    const v = GGML.op_view_1d(context, memory_v, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
-
-    cgraph.build_forward_expand(GGML.op_cpy(context, Kcur, k));
-    cgraph.build_forward_expand(GGML.op_cpy(context, Vcur, v));
-
     const Q = GGML.op_permute(
       context,
       GGML.op_cpy(
@@ -290,6 +284,12 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
     );
 
     residual = cur;
+
+    const k = GGML.op_view_1d(context, memory_k, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
+    const v = GGML.op_view_1d(context, memory_v, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
+
+    cgraph.build_forward_expand(GGML.op_cpy(context, Kcur, k));
+    cgraph.build_forward_expand(GGML.op_cpy(context, Vcur, v));
   }
 
   /* Now we got to the end. Lets do the final norm and
