@@ -24,7 +24,7 @@
 #include <gio/gunixinputstream.h>
 #include <gio/gunixoutputstream.h>
 #include <gio/gunixfdlist.h>
-#include <ggml-gobject/ggml-language-model-service-dbus.h>
+#include <ggml-gobject/ggml-service-dbus.h>
 #include <ggml-gobject/ggml-gobject.h>
 
 #define SIMPLE_TYPE_IO_STREAM  (simple_io_stream_get_type ())
@@ -102,51 +102,51 @@ simple_io_stream_new (GInputStream  *input_stream,
   return G_IO_STREAM (stream);
 }
 
-typedef struct _GGMLLanguageModelServiceState {
+typedef struct _GGMLServiceState {
   GMainLoop                *loop;
-  GGMLLanguageModelService *service_skeleton;
+  GGMLService *service_skeleton;
   GHashTable               *connections;
   GHashTable               *models;
   size_t                    ref_count;
-} GGMLLanguageModelServiceState;
+} GGMLServiceState;
 
 /* Forward declaration */
-typedef struct _GGMLLanguageModelServiceConnection GGMLLanguageModelServiceConnection;
+typedef struct _GGMLServiceConnection GGMLServiceConnection;
 typedef struct _GGMLLanguageModelRef GGMLLanguageModelRef;
-static void ggml_language_model_service_connection_unref (GGMLLanguageModelServiceConnection *conn);
+static void ggml_service_connection_unref (GGMLServiceConnection *conn);
 static void ggml_language_model_ref_free (GGMLLanguageModelRef *ref);
-gboolean ggml_language_model_service_handle_open_session (GGMLLanguageModelService *object,
-                                                          GDBusMethodInvocation    *invocation,
-                                                          GUnixFDList              *in_fd_list,
-                                                          gpointer                  user_data);
+gboolean ggml_service_handle_open_session (GGMLService           *object,
+                                           GDBusMethodInvocation *invocation,
+                                           GUnixFDList           *in_fd_list,
+                                           gpointer               user_data);
 
-static GGMLLanguageModelServiceState *
-ggml_language_model_service_state_new (GMainLoop *loop)
+static GGMLServiceState *
+ggml_service_state_new (GMainLoop *loop)
 {
-  GGMLLanguageModelServiceState *state = g_new0 (GGMLLanguageModelServiceState, 1);
+  GGMLServiceState *state = g_new0 (GGMLServiceState, 1);
   state->loop = g_main_loop_ref (loop);
-  state->service_skeleton = ggml_language_model_service_skeleton_new ();
-  state->connections = g_hash_table_new_full (g_int_hash, NULL, (GDestroyNotify) ggml_language_model_service_connection_unref, NULL);
+  state->service_skeleton = ggml_service_skeleton_new ();
+  state->connections = g_hash_table_new_full (g_int_hash, NULL, (GDestroyNotify) ggml_service_connection_unref, NULL);
   state->models = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_language_model_ref_free);
   state->ref_count = 1;
 
   g_signal_connect (state->service_skeleton,
                     "handle-open-session",
-                    G_CALLBACK (ggml_language_model_service_handle_open_session),
+                    G_CALLBACK (ggml_service_handle_open_session),
                     state);
 
   return state;
 }
 
-static GGMLLanguageModelServiceState *
-ggml_language_model_service_state_ref (GGMLLanguageModelServiceState *state)
+static GGMLServiceState *
+ggml_service_state_ref (GGMLServiceState *state)
 {
   ++state->ref_count;
   return state;
 }
 
 static void
-ggml_language_model_service_state_unref (GGMLLanguageModelServiceState *state)
+ggml_service_state_unref (GGMLServiceState *state)
 {
   if (--state->ref_count == 0)
     {
@@ -157,48 +157,48 @@ ggml_language_model_service_state_unref (GGMLLanguageModelServiceState *state)
     }
 }
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelServiceState, ggml_language_model_service_state_unref)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLServiceState, ggml_service_state_unref)
 
-typedef struct _GGMLLanguageModelServiceConnection {
+typedef struct _GGMLServiceConnection {
   /* weak reference */
-  GGMLLanguageModelServiceState   *parent_state;
+  GGMLServiceState   *parent_state;
 
-  GIOStream                       *stream;
-  GDBusConnection                 *dbus_connection;
-  GGMLLanguageModelServiceSession *session;
-  GHashTable                      *cursors;
-  size_t                           cursor_serial;
-  size_t                           ref_count;
-} GGMLLanguageModelServiceConnection;
+  GIOStream          *stream;
+  GDBusConnection    *dbus_connection;
+  GGMLSession        *session;
+  GHashTable         *cursors;
+  size_t              cursor_serial;
+  size_t              ref_count;
+} GGMLServiceConnection;
 
 
-typedef struct _GGMLLanguageModelServiceSessionCompletion GGMLLanguageModelServiceConnectionCompletion;
-void ggml_language_model_service_session_completion_unref (GGMLLanguageModelServiceConnectionCompletion *);
+typedef struct _GGMLSessionCompletion GGMLServiceConnectionCompletion;
+void ggml_session_completion_unref (GGMLServiceConnectionCompletion *);
 
-GGMLLanguageModelServiceConnection *
-ggml_language_model_service_connection_new (GGMLLanguageModelServiceState *parent_state,
-                                            GIOStream                     *stream)
+GGMLServiceConnection *
+ggml_service_connection_new (GGMLServiceState *parent_state,
+                             GIOStream        *stream)
 {
-  GGMLLanguageModelServiceConnection *connection = g_new0 (GGMLLanguageModelServiceConnection, 1);
+  GGMLServiceConnection *connection = g_new0 (GGMLServiceConnection, 1);
 
   connection->parent_state = parent_state;
   connection->stream = g_object_ref (stream);
-  connection->session = ggml_language_model_service_session_skeleton_new ();
-  connection->cursors = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_language_model_service_session_completion_unref);
+  connection->session = ggml_session_skeleton_new ();
+  connection->cursors = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_session_completion_unref);
   connection->ref_count = 1;
 
   return connection;
 }
 
-GGMLLanguageModelServiceConnection *
-ggml_language_model_service_connection_ref (GGMLLanguageModelServiceConnection *connection)
+GGMLServiceConnection *
+ggml_service_connection_ref (GGMLServiceConnection *connection)
 {
   ++connection->ref_count;
   return connection;
 }
 
 void
-ggml_language_model_service_connection_unref (GGMLLanguageModelServiceConnection *connection)
+ggml_service_connection_unref (GGMLServiceConnection *connection)
 {
   if (--connection->ref_count == 0)
     {
@@ -210,7 +210,7 @@ ggml_language_model_service_connection_unref (GGMLLanguageModelServiceConnection
     }
 }
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelServiceConnection, ggml_language_model_service_connection_unref)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLServiceConnection, ggml_service_connection_unref)
 
 static char *
 language_model_to_key (const char *model_name,
@@ -359,21 +359,21 @@ get_quantization_type (const char    *model_quantization,
 }
 
 typedef struct {
-  GGMLLanguageModelServiceState *service_state;
-  char                          *key;
-  ExecWithModelCallback          callback;
-  gpointer                       user_data;
+  GGMLServiceState      *service_state;
+  char                  *key;
+  ExecWithModelCallback  callback;
+  gpointer               user_data;
 } ExecWithModelClosure;
 
 static ExecWithModelClosure *
-exec_with_model_closure_new (GGMLLanguageModelServiceState *service_state,
-                             char                          *model_key,
-                             ExecWithModelCallback          callback,
-                             gpointer                       user_data)
+exec_with_model_closure_new (GGMLServiceState      *service_state,
+                             char                  *model_key,
+                             ExecWithModelCallback  callback,
+                             gpointer               user_data)
 {
   ExecWithModelClosure *closure = g_new0 (ExecWithModelClosure, 1);
 
-  closure->service_state = ggml_language_model_service_state_ref (service_state);
+  closure->service_state = ggml_service_state_ref (service_state);
   closure->key = g_strdup (model_key);
   closure->callback = callback;
   closure->user_data = user_data;
@@ -384,7 +384,7 @@ exec_with_model_closure_new (GGMLLanguageModelServiceState *service_state,
 void
 exec_with_model_closure_free (ExecWithModelClosure *closure)
 {
-  g_clear_pointer (&closure->service_state, ggml_language_model_service_state_unref);
+  g_clear_pointer (&closure->service_state, ggml_service_state_unref);
   g_clear_pointer (&closure->key, g_free);
   g_clear_pointer (&closure, g_free);
 }
@@ -418,11 +418,11 @@ on_loaded_defined_model (GObject      *source_object,
 }
 
 void
-ggml_language_model_service_ref_model_async (GGMLLanguageModelServiceState *service,
-                                             const char                    *model,
-                                             GVariant                      *properties,
-                                             ExecWithModelCallback          callback,
-                                             gpointer                       user_data)
+ggml_service_ref_model_async (GGMLServiceState      *service,
+                              const char            *model,
+                              GVariant              *properties,
+                              ExecWithModelCallback  callback,
+                              gpointer               user_data)
 {
   /* Check to see if we have the model already.
    *
@@ -504,25 +504,25 @@ ggml_language_model_service_ref_model_async (GGMLLanguageModelServiceState *serv
 }
 
 typedef struct {
-  GGMLLanguageModelServiceSession    *object;
-  GDBusMethodInvocation              *invocation;
-  GGMLLanguageModelServiceConnection *conn;
-  char                               *prompt;
-  int                                 max_tokens;
+  GGMLSession           *object;
+  GDBusMethodInvocation *invocation;
+  GGMLServiceConnection *conn;
+  char                  *prompt;
+  int                    max_tokens;
 } CreateCompletionClosure;
 
 CreateCompletionClosure *
-create_completion_closure_new (GGMLLanguageModelServiceSession    *object,
-                               GDBusMethodInvocation              *invocation,
-                               GGMLLanguageModelServiceConnection *conn,
-                               const char                         *prompt,
-                               int                                 max_tokens)
+create_completion_closure_new (GGMLSession           *object,
+                               GDBusMethodInvocation *invocation,
+                               GGMLServiceConnection *conn,
+                               const char            *prompt,
+                               int                    max_tokens)
 {
   CreateCompletionClosure *closure = g_new0 (CreateCompletionClosure, 1);
 
   closure->object = g_object_ref (object);
   closure->invocation = g_object_ref (invocation);
-  closure->conn = ggml_language_model_service_connection_ref (conn);
+  closure->conn = ggml_service_connection_ref (conn);
   closure->prompt = g_strdup (prompt);
   closure->max_tokens = max_tokens;
 
@@ -534,29 +534,29 @@ create_completion_closure_free (CreateCompletionClosure *closure)
 {
   g_clear_object (&closure->object);
   g_clear_object (&closure->invocation);
-  g_clear_pointer (&closure->conn, ggml_language_model_service_connection_unref);
+  g_clear_pointer (&closure->conn, ggml_service_connection_unref);
   g_clear_pointer (&closure->prompt, g_free);
   g_clear_pointer (&closure, g_free);
 }
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (CreateCompletionClosure, create_completion_closure_free);
 
-typedef struct _GGMLLanguageModelServiceSessionCompletion {
+typedef struct _GGMLSessionCompletion {
   /* weak reference */
-  GGMLLanguageModelServiceSession   *parent_session;
+  GGMLSession   *parent_session;
 
   GGMLLanguageModelCompletionCursor *cursor;
   GGMLLanguageModelCompletion       *completion_skeleton;
   size_t ref_count;
-} GGMLLanguageModelServiceSessionCompletion;
+} GGMLSessionCompletion;
 
-GGMLLanguageModelServiceSessionCompletion *
-ggml_language_model_service_session_completion_new (GGMLLanguageModelServiceSession *parent_session,
-                                                    GGMLLanguageModel               *model,
-                                                    const gchar                     *prompt,
-                                                    gint                             max_tokens)
+GGMLSessionCompletion *
+ggml_session_completion_new (GGMLSession *parent_session,
+                             GGMLLanguageModel  *model,
+                             const gchar        *prompt,
+                             gint                max_tokens)
 {
-  GGMLLanguageModelServiceSessionCompletion *completion = g_new0 (GGMLLanguageModelServiceSessionCompletion, 1);
+  GGMLSessionCompletion *completion = g_new0 (GGMLSessionCompletion, 1);
 
   completion->parent_session = parent_session;
   completion->completion_skeleton = ggml_language_model_completion_skeleton_new ();
@@ -567,7 +567,7 @@ ggml_language_model_service_session_completion_new (GGMLLanguageModelServiceSess
 }
 
 void
-ggml_language_model_service_session_completion_unref (GGMLLanguageModelServiceSessionCompletion *completion)
+ggml_session_completion_unref (GGMLSessionCompletion *completion)
 {
   if (--completion->ref_count == 0)
     {
@@ -577,34 +577,34 @@ ggml_language_model_service_session_completion_unref (GGMLLanguageModelServiceSe
     }
 }
 
-GGMLLanguageModelServiceSessionCompletion *
-ggml_language_model_service_session_completion_ref (GGMLLanguageModelServiceSessionCompletion *completion)
+GGMLSessionCompletion *
+ggml_session_completion_ref (GGMLSessionCompletion *completion)
 {
   ++completion->ref_count;
   return completion;
 }
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelServiceSessionCompletion, ggml_language_model_service_session_completion_unref);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLSessionCompletion, ggml_session_completion_unref);
 
 typedef struct {
-  GGMLLanguageModelCompletion               *completion_skeleton;
-  GDBusMethodInvocation                     *invocation;
-  GPtrArray                                 *stream_chunks;
-  GGMLLanguageModelServiceSessionCompletion *completion;
+  GGMLLanguageModelCompletion *completion_skeleton;
+  GDBusMethodInvocation       *invocation;
+  GPtrArray                   *stream_chunks;
+  GGMLSessionCompletion       *completion;
 } HandleCompletionExecClosure;
 
 HandleCompletionExecClosure *
-handle_completion_exec_closure_new (GGMLLanguageModelCompletion               *completion_skeleton,
-                                    GDBusMethodInvocation                     *invocation,
-                                    GGMLLanguageModelServiceSessionCompletion *completion,
-                                    size_t                                     num_tokens)
+handle_completion_exec_closure_new (GGMLLanguageModelCompletion *completion_skeleton,
+                                    GDBusMethodInvocation       *invocation,
+                                    GGMLSessionCompletion       *completion,
+                                    size_t                       num_tokens)
 {
   HandleCompletionExecClosure *closure = g_new0 (HandleCompletionExecClosure, 1);
 
   closure->completion_skeleton = g_object_ref (completion_skeleton);
   closure->invocation = g_object_ref (invocation);
   closure->stream_chunks = g_ptr_array_new_full (num_tokens, g_free);
-  closure->completion = ggml_language_model_service_session_completion_ref (completion);
+  closure->completion = ggml_session_completion_ref (completion);
 
   return closure;
 }
@@ -615,7 +615,7 @@ handle_completion_exec_closure_free (HandleCompletionExecClosure *closure)
   g_clear_object (&closure->completion_skeleton);
   g_clear_object (&closure->invocation);
   g_clear_pointer (&closure->stream_chunks, g_ptr_array_unref);
-  g_clear_pointer (&closure->completion, ggml_language_model_service_session_completion_unref);
+  g_clear_pointer (&closure->completion, ggml_session_completion_unref);
   g_clear_pointer (&closure, g_free);
 }
 
@@ -669,7 +669,7 @@ on_handle_completion_exec (GGMLLanguageModelCompletion *completion_skeleton,
                            int                          num_tokens,
                            gpointer                     user_data)
 {
-  g_autoptr(GGMLLanguageModelServiceSessionCompletion) completion = user_data;
+  g_autoptr(GGMLSessionCompletion) completion = user_data;
   HandleCompletionExecClosure *closure = handle_completion_exec_closure_new (completion_skeleton,
                                                                              invocation,
                                                                              completion,
@@ -702,21 +702,21 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *ref,
     }
 
   /* Create a completion */
-  g_autoptr(GGMLLanguageModelServiceSessionCompletion) completion = ggml_language_model_service_session_completion_new (closure->conn->session,
-                                                                                                                        ref->model,
-                                                                                                                        closure->prompt,
-                                                                                                                        closure->max_tokens);
+  g_autoptr(GGMLSessionCompletion) completion = ggml_session_completion_new (closure->conn->session,
+                                                                             ref->model,
+                                                                             closure->prompt,
+                                                                             closure->max_tokens);
 
-  g_autofree char *completion_object_path = g_strdup_printf ("/org/ggml/LanguageModelSession/%zu",
+  g_autofree char *completion_object_path = g_strdup_printf ("/org/ggml/LanguageModelCompletion/%zu",
                                                             closure->conn->cursor_serial++);
 
-  /* Expose the /org/ggml/LanguageModelSession/n object */
+  /* Expose the /org/ggml/LanguageModelCompletion/n object */
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (completion->completion_skeleton),
                                          closure->conn->dbus_connection,
                                          completion_object_path,
                                          &error))
     {
-      g_error ("Failed to export LanguageModelServiceSessionCompletion object: %s", error->message);
+      g_error ("Failed to export LanguageModelCompletion object: %s", error->message);
       g_main_loop_quit (closure->conn->parent_state->loop);
       return;
     }
@@ -724,14 +724,14 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *ref,
   /* Now that we have that, we can add the connnection to the hash table */
   g_hash_table_insert (closure->conn->cursors,
                        g_strdup (completion_object_path),
-                       ggml_language_model_service_session_completion_ref (completion));
+                       ggml_session_completion_ref (completion));
 
   /* Now we take the ref and create a cursor on the bus */
   ++ref->use_count;
 
-  ggml_language_model_service_session_complete_create_completion (closure->object,
-                                                                  closure->invocation,
-                                                                  completion_object_path);
+  ggml_session_complete_create_completion (closure->object,
+                                           closure->invocation,
+                                           completion_object_path);
 
   /* Handle the exec() method call */
   g_signal_connect (completion->completion_skeleton,
@@ -743,26 +743,26 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *ref,
 }
 
 gboolean
-on_handle_create_completion (GGMLLanguageModelServiceSession *object,
-                             GDBusMethodInvocation           *invocation,
-                             const char                      *model,
-                             GVariant                        *properties,
-                             const char                      *prompt,
-                             int                              max_tokens,
-                             gpointer                         user_data)
+on_handle_create_completion (GGMLSession           *object,
+                             GDBusMethodInvocation *invocation,
+                             const char            *model,
+                             GVariant              *properties,
+                             const char            *prompt,
+                             int                    max_tokens,
+                             gpointer               user_data)
 {
-  GGMLLanguageModelServiceConnection *conn = user_data;
+  GGMLServiceConnection *conn = user_data;
   g_autoptr(CreateCompletionClosure) closure = create_completion_closure_new (object,
                                                                               invocation,
                                                                               conn,
                                                                               prompt,
                                                                               max_tokens);
 
-  ggml_language_model_service_ref_model_async (conn->parent_state,
-                                               model,
-                                               properties,
-                                               on_create_completion_obtained_model_ref,
-                                               g_steal_pointer (&closure));
+  ggml_service_ref_model_async (conn->parent_state,
+                                model,
+                                properties,
+                                on_create_completion_obtained_model_ref,
+                                g_steal_pointer (&closure));
   return TRUE;
 }
 
@@ -772,7 +772,7 @@ on_private_server_bus_connection_closed (GDBusConnection *dbus_connection,
                                          GError          *error,
                                          gpointer         user_data)
 {
-  GGMLLanguageModelServiceConnection *conn = user_data;
+  GGMLServiceConnection *conn = user_data;
   GHashTable *connections = conn->parent_state->connections;
 
   /* Remove the connection from the set of connections */
@@ -787,7 +787,7 @@ on_created_private_bus_server_connection (GObject      *object,
                                           gpointer      user_data)
 {
   g_autoptr(GError) error = NULL;
-  GGMLLanguageModelServiceConnection *conn = user_data;
+  GGMLServiceConnection *conn = user_data;
   g_autoptr(GDBusConnection) dbus_connection = g_dbus_connection_new_finish (result, &error);
 
   if (dbus_connection == NULL)
@@ -805,13 +805,13 @@ on_created_private_bus_server_connection (GObject      *object,
 
   g_message ("Created private connection");
 
-  /* Expose the /org/ggml/LanguageModelSession object */
+  /* Expose the /org/ggml/Session object */
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (conn->session),
                                          dbus_connection,
-                                         "/org/ggml/LanguageModelSession",
+                                         "/org/ggml/Session",
                                          &error))
     {
-      g_error ("Failed to export LanguageModelSession object: %s", error->message);
+      g_error ("Failed to export Session object: %s", error->message);
       g_main_loop_quit (conn->parent_state->loop);
       return;
     }
@@ -825,12 +825,12 @@ on_created_private_bus_server_connection (GObject      *object,
 }
 
 gboolean
-ggml_language_model_service_handle_open_session (GGMLLanguageModelService *object,
-                                                 GDBusMethodInvocation    *invocation,
-                                                 GUnixFDList              *in_fd_list,
-                                                 gpointer                  user_data)
+ggml_service_handle_open_session (GGMLService           *object,
+                                  GDBusMethodInvocation *invocation,
+                                  GUnixFDList           *in_fd_list,
+                                  gpointer               user_data)
 {
-  GGMLLanguageModelServiceState *state = user_data;
+  GGMLServiceState *state = user_data;
   g_autoptr(GError) error = NULL;
   g_autoptr(GUnixFDList) fd_list = g_unix_fd_list_new ();
   int client_to_server_fds[2];
@@ -865,17 +865,17 @@ ggml_language_model_service_handle_open_session (GGMLLanguageModelService *objec
 
   /* Complete opening the session - this will cause the client to try
    * and connect on the other end of the pipes */
-  ggml_language_model_service_complete_open_session (object,
-                                                     invocation,
-                                                     fd_list);
+  ggml_service_complete_open_session (object,
+                                      invocation,
+                                      fd_list);
 
   g_autoptr(GInputStream) input_stream = g_unix_input_stream_new (client_to_server_fds[0], TRUE);
   g_autoptr(GOutputStream) output_stream = g_unix_output_stream_new (server_to_client_fds[1], TRUE);
   g_autoptr(GIOStream) io_stream = simple_io_stream_new (input_stream,
                                                          output_stream);
 
-  g_autoptr(GGMLLanguageModelServiceConnection) conn = ggml_language_model_service_connection_new (state, io_stream);
-  g_hash_table_insert (state->connections, ggml_language_model_service_connection_ref (conn), NULL);
+  g_autoptr(GGMLServiceConnection) conn = ggml_service_connection_new (state, io_stream);
+  g_hash_table_insert (state->connections, ggml_service_connection_ref (conn), NULL);
 
   g_autofree char *guid = g_dbus_generate_guid ();
   g_dbus_connection_new (conn->stream,
@@ -903,17 +903,17 @@ on_acquired_name (GDBusConnection *connection,
                   const char      *name,
                   gpointer         user_data)
 {
-  GGMLLanguageModelServiceState *state = user_data;
+  GGMLServiceState *state = user_data;
   g_autoptr(GError) error = NULL;
 
   g_message ("Acquired name");
 
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (state->service_skeleton),
                                          connection,
-                                         "/org/ggml/ModelService",
+                                         "/org/ggml/Service",
                                          &error))
     {
-      g_error ("Failed to export ModelService object: %s", error->message);
+      g_error ("Failed to export Service object: %s", error->message);
       g_main_loop_quit (state->loop);
       return;
     }
@@ -924,7 +924,7 @@ on_lost_name (GDBusConnection *connection,
               const char      *name,
               gpointer         user_data)
 {
-  GGMLLanguageModelServiceState *state = user_data;
+  GGMLServiceState *state = user_data;
   g_message ("Lost name");
 
   g_main_loop_quit (state->loop);
@@ -933,12 +933,12 @@ on_lost_name (GDBusConnection *connection,
 static gboolean
 on_main_loop_started (gpointer data)
 {
-  GGMLLanguageModelServiceState *state = data;
+  GGMLServiceState *state = data;
 
   g_message ("Started loop");
 
   g_bus_own_name (G_BUS_TYPE_SESSION,
-                  "org.ggml.ModelService",
+                  "org.ggml.Service",
                   G_BUS_NAME_OWNER_FLAGS_REPLACE |
                   G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT,
                   on_acquired_bus,
@@ -953,7 +953,7 @@ on_main_loop_started (gpointer data)
 int main (int argc, char **argv)
 {
   g_autoptr(GMainLoop) loop = g_main_loop_new (NULL, TRUE);
-  g_autoptr(GGMLLanguageModelServiceState) state = ggml_language_model_service_state_new (loop);
+  g_autoptr(GGMLServiceState) state = ggml_service_state_new (loop);
 
   g_idle_add (on_main_loop_started, state);
   g_main_loop_run (loop);

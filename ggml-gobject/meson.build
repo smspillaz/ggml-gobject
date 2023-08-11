@@ -58,17 +58,19 @@ ggml_enum_files = gnome.mkenums_simple('ggml-enum-types',
   identifier_prefix: 'GGML',
   symbol_prefix: 'ggml'
 )
-gdbus_src = gnome.gdbus_codegen(
-  'ggml-language-model-service-dbus',
-  sources: 'dbus/ggml-language-model-service.xml',
-  interface_prefix: 'org.ggml_gobject.',
+ggml_dbus_service_src_target = gnome.gdbus_codegen(
+  'ggml-service-dbus',
+  sources: 'dbus/ggml-service.xml',
+  interface_prefix: 'org.ggml.',
   namespace: 'GGML',
   autocleanup: 'all',
   object_manager: true,
   extra_args: ['--glib-min-required', '2.64']
 )
+ggml_service_gdbus_src = ggml_dbus_service_src_target[0]
+ggml_service_gdbus_header = ggml_dbus_service_src_target[1]
 
-ggml_gobject_toplevel_sources = ggml_gobject_toplevel_introspectable_sources + ggml_gobject_toplevel_internal_sources + ggml_enum_files + gdbus_src
+ggml_gobject_toplevel_sources = ggml_gobject_toplevel_introspectable_sources + ggml_gobject_toplevel_internal_sources + ggml_enum_files + ggml_service_gdbus_src
 
 ggml_gobject_lib = shared_library(
   'ggml-gobject',
@@ -83,7 +85,7 @@ introspection_sources = [
   ggml_gobject_toplevel_introspectable_headers,
   ggml_gobject_toplevel_introspectable_sources,
   ggml_enum_files,
-  gdbus_src
+  ggml_service_gdbus_src
 ]
 
 ggml_gobject_gir = gnome.generate_gir(

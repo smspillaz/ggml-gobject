@@ -4,7 +4,7 @@ client_sources = files([
 
 client = executable(
   'ggml-language-model-client',
-  client_sources,
+  client_sources + ggml_service_gdbus_header,
   dependencies : [
     glib,
     gio,

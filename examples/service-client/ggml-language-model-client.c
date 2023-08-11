@@ -25,7 +25,7 @@
 #include <gio/gunixinputstream.h>
 #include <gio/gunixoutputstream.h>
 #include <gio/gunixfdlist.h>
-#include <ggml-gobject/ggml-language-model-service-dbus.h>
+#include <ggml-gobject/ggml-service-dbus.h>
 
 #define SIMPLE_TYPE_IO_STREAM  (simple_io_stream_get_type ())
 #define SIMPLE_IO_STREAM(o)    (G_TYPE_CHECK_INSTANCE_CAST ((o), SIMPLE_TYPE_IO_STREAM, SimpleIOStream))
@@ -103,11 +103,11 @@ simple_io_stream_new (GInputStream  *input_stream,
 }
 
 typedef struct {
-  GMainLoop                       *loop;
-  GGMLLanguageModelService        *service_proxy;
-  GDBusConnection                 *dbus_connection;
-  GGMLLanguageModelServiceSession *session_proxy;
-  size_t                           ref_count;
+  GMainLoop       *loop;
+  GGMLService     *service_proxy;
+  GDBusConnection *dbus_connection;
+  GGMLSession     *session_proxy;
+  size_t           ref_count;
 } GGMLLanguageModelClientState;
 
 static GGMLLanguageModelClientState *
@@ -223,10 +223,10 @@ on_call_create_completion_reply (GObject      *source_object,
   g_autoptr(GError) error = NULL;
   g_autofree char *completion_object_path = NULL;
 
-  if (!ggml_language_model_service_session_call_create_completion_finish (state->session_proxy,
-                                                                          &completion_object_path,
-                                                                          result,
-                                                                          &error))
+  if (!ggml_session_call_create_completion_finish (state->session_proxy,
+                                                   &completion_object_path,
+                                                   result,
+                                                   &error))
     {
       g_error ("Failed to create completion: %s\n", error->message);
       g_main_loop_quit (state->loop);
@@ -248,17 +248,17 @@ on_call_create_completion_reply (GObject      *source_object,
 }
 
 static void
-on_language_model_service_session_proxy_ready (GObject      *source_object,
-                                               GAsyncResult *result,
-                                               gpointer      user_data)
+on_service_session_proxy_ready (GObject      *source_object,
+                                GAsyncResult *result,
+                                gpointer      user_data)
 {
   g_autoptr(GGMLLanguageModelClientState) state = user_data;
   g_autoptr(GError) error = NULL;
-  g_autoptr(GGMLLanguageModelServiceSession) session_proxy = ggml_language_model_service_session_proxy_new_finish (result, &error);
+  g_autoptr(GGMLSession) session_proxy = ggml_session_proxy_new_finish (result, &error);
 
   if (session_proxy == NULL)
     {
-      g_error ("Failed to create LanguageModelSessionProxy object: %s", error->message);
+      g_error ("Failed to create SessionProxy object: %s", error->message);
       g_main_loop_quit (state->loop);
       return;
     }
@@ -272,16 +272,16 @@ on_language_model_service_session_proxy_ready (GObject      *source_object,
   g_autoptr(GVariant) properties = g_variant_ref_sink (g_variant_builder_end (&builder));
 
   /* Now lets create a cursor and start doing some inference */
-  ggml_language_model_service_session_call_create_completion (state->session_proxy,
-                                                              "gpt2",
-                                                              properties,
-                                                              "The meaning of life is:",
-                                                              128,
-                                                              G_DBUS_CALL_FLAGS_NONE,
-                                                              -1,
-                                                              NULL,
-                                                              on_call_create_completion_reply,
-                                                              g_steal_pointer (&state));
+  ggml_session_call_create_completion (state->session_proxy,
+                                       "gpt2",
+                                       properties,
+                                       "The meaning of life is:",
+                                       128,
+                                       G_DBUS_CALL_FLAGS_NONE,
+                                       -1,
+                                       NULL,
+                                       on_call_create_completion_reply,
+                                       g_steal_pointer (&state));
 
   g_message ("Created session proxy");
 }
@@ -307,13 +307,13 @@ on_created_private_connection (GObject      *source_object,
 
   g_message ("Created private connection");
 
-  ggml_language_model_service_session_proxy_new (
+  ggml_session_proxy_new (
     dbus_connection,
     G_DBUS_PROXY_FLAGS_NONE,
     NULL, /* Not a bus connection */
-    "/org/ggml/LanguageModelSession",
+    "/org/ggml/Session",
     NULL,
-    on_language_model_service_session_proxy_ready,
+    on_service_session_proxy_ready,
     g_steal_pointer (&state)
  );
 }
@@ -323,15 +323,15 @@ on_call_open_session_reply (GObject      *source_object,
                             GAsyncResult *result,
                             gpointer      user_data)
 {
-  GGMLLanguageModelService *service_proxy = GGML_LANGUAGE_MODEL_SERVICE (source_object);
+  GGMLService *service_proxy = GGML_SERVICE (source_object);
   g_autoptr(GGMLLanguageModelClientState) state = user_data;
   g_autoptr(GError) error = NULL;
   g_autoptr(GUnixFDList) fd_list = NULL;
 
-  if (!ggml_language_model_service_call_open_session_finish (service_proxy,
-                                                             &fd_list,
-                                                             result,
-                                                             &error))
+  if (!ggml_service_call_open_session_finish (service_proxy,
+                                              &fd_list,
+                                              result,
+                                              &error))
     {
       g_error ("Failed to call OpenSession: %s", error->message);
       g_main_loop_quit (state->loop);
@@ -357,13 +357,13 @@ on_call_open_session_reply (GObject      *source_object,
 }
 
 static void
-on_language_model_service_proxy_ready (GObject      *source_object,
-                                       GAsyncResult *result,
-                                       gpointer      user_data)
+on_service_proxy_ready (GObject      *source_object,
+                        GAsyncResult *result,
+                        gpointer      user_data)
 {
   g_autoptr(GGMLLanguageModelClientState) state = user_data;
   g_autoptr(GError) error = NULL;
-  g_autoptr(GGMLLanguageModelService) proxy = ggml_language_model_service_proxy_new_for_bus_finish (result, &error);
+  g_autoptr(GGMLService) proxy = ggml_service_proxy_new_for_bus_finish (result, &error);
 
   if (proxy == NULL)
     {
@@ -374,13 +374,13 @@ on_language_model_service_proxy_ready (GObject      *source_object,
 
   state->service_proxy = g_object_ref (proxy);
 
-  ggml_language_model_service_call_open_session (state->service_proxy,
-                                                 G_DBUS_CALL_FLAGS_NONE,
-                                                 -1,
-                                                 NULL,
-                                                 NULL,
-                                                 on_call_open_session_reply,
-                                                 g_steal_pointer (&state));
+  ggml_service_call_open_session (state->service_proxy,
+                                  G_DBUS_CALL_FLAGS_NONE,
+                                  -1,
+                                  NULL,
+                                  NULL,
+                                  on_call_open_session_reply,
+                                  g_steal_pointer (&state));
 
   g_message ("Created proxy");
 }
@@ -393,13 +393,13 @@ on_main_loop_started (gpointer data)
 
   g_message ("Started loop");
 
-  ggml_language_model_service_proxy_new_for_bus (
+  ggml_service_proxy_new_for_bus (
     G_BUS_TYPE_SESSION,
     G_DBUS_PROXY_FLAGS_NONE,
-    "org.ggml.ModelService",
-    "/org/ggml/ModelService",
+    "org.ggml.Service",
+    "/org/ggml/Service",
     NULL,
-    on_language_model_service_proxy_ready,
+    on_service_proxy_ready,
     g_steal_pointer (&state)
  );
 
