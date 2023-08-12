@@ -31,7 +31,7 @@ pkg.require({
 });
 
 const System = imports.system;
-const {Gdk, GObject, Gio, GLib, Gtk, GGML} = imports.gi;
+const {Gdk, GObject, Gio, GLib, Gtk, GGML, GGMLClient} = imports.gi;
 
 const RESOURCE_PATH = 'resource:///org/ggml-gobject/LLMWriter/Application/data';
 
@@ -198,6 +198,87 @@ class LocalCursorManager {
 
   invalidate_cursor() {
     this._current_cursor = null;
+  }
+}
+
+const model_enum_to_name_and_variant = (model_enum) => {
+  switch (model_enum) {
+    case GGML.DefinedLanguageModel.GPT2P117M:
+      return ["gpt2", "117M"];
+    case GGML.DefinedLanguageModel.GPT2P345M:
+      return ["gpt2", "345M"];
+    case GGML.DefinedLanguageModel.GPT2P774M:
+      return ["gpt2", "774M"];
+    case GGML.DefinedLanguageModel.GPT2P5587M:
+      return ["gpt2", "1558M"];
+    default:
+      return null;
+  }
+};
+
+const DATA_TYPE_TO_STR = Object.fromEntries(Object.keys(GGML.DataType).map(k => [GGML.DataType[k], k.toLowerCase()]));
+
+class DBusCursorManager {
+  constructor() {
+    this._loading = false;
+    this._session = null;
+    this._current_cursor = null;
+    this._current_base_text = null;
+    this._invoke_callback = null;
+  }
+
+  with_cursor(base_text,
+              model_enum,
+              quantization_enum,
+              cancellable,
+              callback,
+              progress_callback) {
+    if (this._current_cursor !== null) {
+      callback(this._current_cursor);
+      return;
+    }
+
+    if (this._loading === true) {
+      this._invoke_callback = callback;
+      return;
+    }
+
+    this._loading = true;
+    this._invoke_callback = callback;
+    const startCompletion = () => {
+      const [model_name, model_variant] = model_enum_to_name_and_variant(model_enum);
+      const quantization_type_str = DATA_TYPE_TO_STR[quantization_enum !== null ? quantization_enum : GGML.DataType.F16];
+      this._session.start_completion_async (
+        model_name,
+        model_variant,
+        quantization_type_str,
+        base_text,
+        256,
+        cancellable,
+        (obj, result) => {
+          this._current_cursor = GGMLClient.Session.start_completion_finish(result);
+          this._loading = false;
+          this._invoke_callback(this._current_cursor);
+        }
+      );
+    };
+
+    if (this._session === null) {
+      GGMLClient.Session.new_async(cancellable, (obj, result) => {
+        this._session = GGMLClient.Session.new_finish(result);
+        startCompletion();
+      });
+    } else {
+      startCompletion();
+    }
+  }
+
+  invalidate_cursor() {
+    if (this._current_cursor !== null) {
+      this._current_cursor.destroy();
+    }
+    this._current_cursor = null;
+    System.gc();
   }
 }
 
