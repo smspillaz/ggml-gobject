@@ -741,11 +741,17 @@ on_handle_completion_terminate (GGMLLanguageModelCompletion *completion_skeleton
    * This will drop the main ref we have on the completion - if it
    * is still going, the async call will hold a ref until the completion
    * finishes and returns %G_IO_ERROR_CANCELLED */
-  g_hash_table_remove (completion->parent_connection->parent_state->models,
+  g_hash_table_remove (completion->parent_connection->cursors,
                        object_path);
 
   /* Finally we unexport this completion from the bus */
   g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (completion_skeleton));
+
+  /* Reply */
+  ggml_language_model_completion_complete_terminate (completion_skeleton,
+                                                     invocation);
+
+  g_message ("Terminated cursor on the server side");
 
   return TRUE;
 }
