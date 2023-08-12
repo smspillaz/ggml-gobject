@@ -572,6 +572,7 @@ typedef struct _GGMLSessionCompletion {
   GGMLLanguageModelRef              *ref;
   GGMLLanguageModelCompletionCursor *cursor;
   GGMLLanguageModelCompletion       *completion_skeleton;
+  GCancellable                      *cancellable;
   size_t ref_count;
 } GGMLSessionCompletion;
 
@@ -598,6 +599,7 @@ ggml_session_completion_unref (GGMLSessionCompletion *completion)
   if (--completion->ref_count == 0)
     {
       g_clear_object (&completion->completion_skeleton);
+      g_clear_pointer (&completion->cancellable, g_object_unref);
       g_clear_pointer (&completion->ref, ggml_language_model_ref_drop);
       g_clear_pointer (&completion->cursor, ggml_language_model_completion_cursor_unref);
       g_clear_pointer (&completion, g_free);
@@ -671,6 +673,8 @@ on_done_exec_stream_for_cursor (GObject      *source_object,
   g_autoptr(GError) error = NULL;
   g_autoptr(HandleCompletionExecClosure) closure = user_data;
 
+  g_clear_object (&closure->completion->cancellable);
+
   if (!ggml_language_model_completion_cursor_exec_stream_finish (closure->completion->cursor,
                                                                  result,
                                                                  &error))
@@ -696,16 +700,19 @@ on_handle_completion_exec (GGMLLanguageModelCompletion *completion_skeleton,
                            int                          num_tokens,
                            gpointer                     user_data)
 {
-  g_autoptr(GGMLSessionCompletion) completion = user_data;
+  GGMLSessionCompletion *completion = user_data;
   HandleCompletionExecClosure *closure = handle_completion_exec_closure_new (completion_skeleton,
                                                                              invocation,
                                                                              completion,
                                                                              num_tokens);
 
+  g_clear_object (&completion->cancellable);
+  completion->cancellable = g_cancellable_new ();
+
   ggml_language_model_completion_cursor_exec_stream_async (completion->cursor,
                                                            num_tokens,
                                                            2,
-                                                           NULL,
+                                                           completion->cancellable,
                                                            on_new_tokens_for_cursor,
                                                            closure,
                                                            NULL,
