@@ -1,5 +1,5 @@
 /*
- * examples/service-client/client.c
+ * examples/service-client/ggml-language-model-client.c
  *
  * Copyright (c) 2023 Sam Spilsbury
  *
