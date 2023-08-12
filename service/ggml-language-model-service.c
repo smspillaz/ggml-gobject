@@ -722,6 +722,34 @@ on_handle_completion_exec (GGMLLanguageModelCompletion *completion_skeleton,
   return TRUE;
 }
 
+gboolean
+on_handle_completion_terminate (GGMLLanguageModelCompletion *completion_skeleton,
+                                GDBusMethodInvocation       *invocation,
+                                gpointer                     user_data)
+{
+  GGMLSessionCompletion *completion = user_data;
+  const char *object_path = g_dbus_interface_skeleton_get_object_path (G_DBUS_INTERFACE_SKELETON (completion_skeleton));
+
+  /* Cancel any running completion */
+  if (completion->cancellable)
+    {
+      g_cancellable_cancel (completion->cancellable);
+    }
+
+  /* Now we remove the completion from the hash table.
+   *
+   * This will drop the main ref we have on the completion - if it
+   * is still going, the async call will hold a ref until the completion
+   * finishes and returns %G_IO_ERROR_CANCELLED */
+  g_hash_table_remove (completion->parent_connection->parent_state->models,
+                       object_path);
+
+  /* Finally we unexport this completion from the bus */
+  g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (completion_skeleton));
+
+  return TRUE;
+}
+
 void
 on_create_completion_obtained_model_ref (GGMLLanguageModelRef *model_ref_floating,
                                          GError               *error,
@@ -776,6 +804,12 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *model_ref_floatin
   g_signal_connect (completion->completion_skeleton,
                     "handle-exec",
                     G_CALLBACK (on_handle_completion_exec),
+                    completion);
+
+  /* Handle the terminate() method call */
+  g_signal_connect (completion->completion_skeleton,
+                    "handle-terminate",
+                    G_CALLBACK (on_handle_completion_terminate),
                     completion);
 
   g_message ("Created cursor, exposed object at path %s\n", completion_object_path);
