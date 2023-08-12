@@ -505,6 +505,53 @@ describe('GGML GPT2', function() {
       }
     );
   });
+  it('treats multiple execution as an error', function(done) {
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2P177M,
+      istream,
+      null,
+      null
+    );
+    const cursor = language_model.create_completion('The meaning of life is:', 32);
+
+    let completion_tokens = [];
+    let other_completion_tokens = [];
+    let launched_other_task = false;
+
+    cursor.exec_stream_async(
+      7,
+      5,
+      null,
+      (part, is_complete_eos) => {
+        /* We'll launch the second task here as there's no
+         * guarantee that the tasks get launched in order from the
+         * main thread */
+        if (!launched_other_task) {
+          launched_other_task = true;
+          cursor.exec_stream_async(
+            7,
+            5,
+            null,
+            (part, is_complete_eos) => other_completion_tokens.push(part),
+            (src, res) => {
+              expect(() => cursor.exec_stream_finish(res)).toThrow();
+              expect(other_completion_tokens).toEqual([]);
+            }
+          );
+        }
+        completion_tokens.push(part);
+      },
+      (src, res) => {
+        expect(cursor.exec_stream_finish(res)).toEqual(true);
+        expect(completion_tokens.join('')).toEqual(
+          'The meaning of life is: to live in a world of abundance'
+        );
+        done();
+      }
+    );
+  });
   it('can do a forward pass through some data asynchronously', function(done) {
     const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
 
