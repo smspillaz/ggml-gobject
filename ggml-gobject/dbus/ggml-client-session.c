@@ -146,8 +146,6 @@ on_call_create_completion_reply (GObject      *source_object,
     }
 
   /* Now we have to create a proxy for the object path on the bus */
-  g_message ("Created completion on server side, creating object for %s", completion_object_path);
-
   ggml_language_model_completion_proxy_new (
     g_dbus_proxy_get_connection (G_DBUS_PROXY (closure->session_client->proxy)),
     G_DBUS_PROXY_FLAGS_NONE,

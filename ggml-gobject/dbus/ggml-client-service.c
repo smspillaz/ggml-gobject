@@ -218,8 +218,6 @@ on_call_open_session_reply (GObject      *source_object,
       return;
     }
 
-  g_message ("Called OpenSession. Got %i fds", g_unix_fd_list_get_length (fd_list));
-
   int n_fds = 0;
   g_autofree int *fds = g_unix_fd_list_steal_fds (fd_list, &n_fds);
 
