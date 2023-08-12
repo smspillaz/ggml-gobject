@@ -416,6 +416,12 @@ const LLMWriterAppMainWindow = GObject.registerClass({
         return false;
       }
     });
+    buffer.connect('changed', () => {
+      if (this._textBufferState === STATE_TEXT_EDITOR) {
+        maybeAbortPrediction();
+        System.gc();
+      }
+    });
     this.text_view.connect('backspace', () => {
       maybeAbortPrediction();
       return false;
