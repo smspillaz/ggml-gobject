@@ -167,6 +167,40 @@ class ModelLoader {
   }
 }
 
+class LocalCursorManager {
+  constructor() {
+    this._model_loader = new ModelLoader();
+    this._current_cursor = null;
+    this._current_base_text = null;
+  }
+
+  with_cursor(base_text,
+              model_enum,
+              quantization_enum,
+              cancellable,
+              callback,
+              progress_callback) {
+    if (this._current_cursor !== null) {
+      return callback(this._current_cursor);
+    } else {
+      this._model_loader.with_model(
+        model_enum,
+        quantization_enum,
+        cancellable,
+        model => {
+          this._current_cursor = model.create_completion(base_text, 256);
+          return callback(this._current_cursor);
+        },
+        progress_callback
+      );
+    }
+  }
+
+  invalidate_cursor() {
+    this._current_cursor = null;
+  }
+}
+
 const makeCombobox = (listOptions, callback) => {
   const combobox = Gtk.ComboBox.new_with_model(
     list_store_from_rows(listOptions)
@@ -191,8 +225,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
   _init(params) {
     super._init(params);
 
-    this._model_loader = new ModelLoader();
-    this._cursor = null;
+    this._cursor_manager = new LocalCursorManager();
 
     const resetProgress = () => {
       this.progress_bar.set_visible(false);
@@ -227,7 +260,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
         null,
         () => {
           this._spinner.stop();
-          this._cursor = null;
+          this._cursor_manager.invalidate_cursor();
         },
         progressCallback
       );
@@ -275,7 +308,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       this._candidateText = '';
       this.text_view.set_editable(true);
       this._spinner.stop();
-      this._cursor = null;
+      this._cursor_manager.invalidate_cursor();
       System.gc();
     };
     const maybeAbortPrediction = () => {
@@ -288,7 +321,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       else if (this._textBufferState === STATE_WAITING) {
         resetState();
       } else if (this._textBufferState == STATE_TEXT_EDITOR) {
-        this._cursor = null;
+        this._cursor_manager.invalidate_cursor();
         System.gc();
       }
     };
@@ -342,26 +375,22 @@ const LLMWriterAppMainWindow = GObject.registerClass({
         this._spinner.start();
         buffer.create_mark("predictions-start", buffer.get_end_iter(), true);
 
-        if (this._cursor !== null) {
-          predictFunc(this._cursor, 10, null, buffer);
-        } else {
-          const text = buffer.get_text(
-            buffer.get_start_iter(),
-            buffer.get_end_iter(),
-            false
-          );
+        const text = buffer.get_text(
+          buffer.get_start_iter(),
+          buffer.get_end_iter(),
+          false
+        );
 
-          this._model_loader.with_model(
-            COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[modelCombobox.active],
-            COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM[quantizationCombobox.active],
-            this._cancellable,
-            model => {
-              this._cursor = model.create_completion(text, 256);
-              predictFunc(this._cursor, 10, text, buffer);
-            },
-            progressCallback
-          );
-        }
+        this._cursor_manager.with_cursor(
+          text,
+          COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[modelCombobox.active],
+          COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM[quantizationCombobox.active],
+          this._cancellable,
+          cursor => {
+            predictFunc(cursor, 10, text, buffer);
+          },
+          progressCallback
+        );
       } else if (currentPosition > 0 &&
                  currentPosition === this._lastCursorOffset &&
                  count > 0 &&
