@@ -451,7 +451,7 @@ ggml_language_model_complete_thread_push_tokens_or_error (GGMLLanguageModelCompl
 static gpointer
 ggml_language_model_complete_cursor_thread_loop (gpointer data)
 {
-  GGMLLanguageModelCompleteState *state = data;
+  g_autoptr(GGMLLanguageModelCompleteState) state = data;
   g_autofree int32_t *out_prompt_tokens = NULL;
   size_t   out_n_prompt_tokens = 0;
   int32_t  n_completed_iterations = 0;
