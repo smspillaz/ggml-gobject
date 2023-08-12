@@ -253,17 +253,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       visible: true
     });
     const comboboxChangedCallback = () => {
-      resetProgress();
-      this._model_loader.with_model(
-        COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[modelCombobox.active],
-        COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM[quantizationCombobox.active],
-        null,
-        () => {
-          this._spinner.stop();
-          this._cursor_manager.invalidate_cursor();
-        },
-        progressCallback
-      );
+      maybeAbortPrediction();
     };
     const modelCombobox = makeCombobox([
       ['GPT2 117M'],
