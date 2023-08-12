@@ -699,6 +699,7 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *ref,
     {
       g_dbus_method_invocation_return_gerror (closure->invocation,
                                               error);
+      return;
     }
 
   /* Create a completion */
