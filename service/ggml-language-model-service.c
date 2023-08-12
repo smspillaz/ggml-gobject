@@ -24,7 +24,7 @@
 #include <gio/gunixinputstream.h>
 #include <gio/gunixoutputstream.h>
 #include <gio/gunixfdlist.h>
-#include <ggml-gobject/ggml-service-dbus.h>
+#include <ggml-gobject/dbus/ggml-service-dbus.h>
 #include <ggml-gobject/ggml-gobject.h>
 
 #define SIMPLE_TYPE_IO_STREAM  (simple_io_stream_get_type ())

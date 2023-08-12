@@ -12,7 +12,8 @@ client = executable(
     ggml
   ],
   link_with: [
-    ggml_gobject_lib
+    ggml_gobject_lib,
+    ggml_gobject_client_lib
   ],
   include_directories : [
     ggml_gobject_inc
