@@ -83,12 +83,34 @@ ggml_client_language_model_cursor_ref (GGMLClientLanguageModelCursor *cursor)
   return cursor;
 }
 
+void
+on_terminate_call_completed (GObject      *source_object,
+                             GAsyncResult *result,
+                             gpointer      user_data)
+{
+  g_autoptr(GError) error = NULL;
+
+  if (!ggml_language_model_completion_call_terminate_finish (GGML_LANGUAGE_MODEL_COMPLETION (source_object),
+                                                             result,
+                                                             &error))
+    {
+      g_message ("Failed to destroy cursor on the remote end: %s", error->message);
+      return;
+    }
+
+  g_message ("Successfuly destroyed cursor on the remote end");
+}
+
 /**
  * ggml_client_language_model_cursor_unref: (skip):
  * @cursor: A #GGMLClientLanguageModelCursor
  *
  * Decrease the ref count on this #GGMLClientLanguageModelCursor . When the ref count
  * drops to zero, then the cursor will be freed.
+ *
+ * Note this will also terminate the instance of the remote cursor on the
+ * bus as well, so all the memory might not necessarily be freed at this point
+ * but will be freed on a later main loop iteration.
  */
 void
 ggml_client_language_model_cursor_unref (GGMLClientLanguageModelCursor *cursor)
@@ -99,6 +121,19 @@ ggml_client_language_model_cursor_unref (GGMLClientLanguageModelCursor *cursor)
         {
           g_signal_handler_disconnect (cursor->proxy, cursor->new_chunk_connection);
           cursor->new_chunk_connection = -1;
+        }
+
+      /* If we still have the proxy, then we have to take another ref on the proxy at least
+       * while we call terminate() on the remote side, this ensures that any memory on
+       * the server side has been cleaned up. */
+      if (cursor->proxy != NULL)
+        {
+          ggml_language_model_completion_call_terminate (cursor->proxy,
+                                                         G_DBUS_CALL_FLAGS_NONE,
+                                                         -1,
+                                                         NULL,
+                                                         on_terminate_call_completed,
+                                                         NULL);
         }
 
       g_clear_pointer (&cursor->chunk_callback_data, cursor->chunk_callback_data_destroy);
