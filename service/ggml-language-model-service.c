@@ -114,7 +114,7 @@ typedef struct _GGMLServiceState {
 typedef struct _GGMLServiceConnection GGMLServiceConnection;
 typedef struct _GGMLLanguageModelRef GGMLLanguageModelRef;
 static void ggml_service_connection_unref (GGMLServiceConnection *conn);
-static void ggml_language_model_ref_free (GGMLLanguageModelRef *ref);
+static void ggml_language_model_ref_drop (GGMLLanguageModelRef *ref);
 gboolean ggml_service_handle_open_session (GGMLService           *object,
                                            GDBusMethodInvocation *invocation,
                                            GUnixFDList           *in_fd_list,
@@ -127,7 +127,7 @@ ggml_service_state_new (GMainLoop *loop)
   state->loop = g_main_loop_ref (loop);
   state->service_skeleton = ggml_service_skeleton_new ();
   state->connections = g_hash_table_new_full (g_int_hash, NULL, (GDestroyNotify) ggml_service_connection_unref, NULL);
-  state->models = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_language_model_ref_free);
+  state->models = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) ggml_language_model_ref_drop);
   state->ref_count = 1;
 
   g_signal_connect (state->service_skeleton,
@@ -227,31 +227,56 @@ language_model_to_key (const char *model_name,
 }
 
 typedef struct _GGMLLanguageModelRef {
+  /* weak reference */
+  GGMLServiceState  *service_state;
   GGMLLanguageModel *model;
-  size_t             use_count;
+  char              *key;
+  size_t             ref_count;
 } GGMLLanguageModelRef;
 
 GGMLLanguageModelRef *
-ggml_language_model_ref_new (GGMLLanguageModel *model)
+ggml_service_state_language_model_ref_new (GGMLServiceState  *state,
+                                           const char        *key,
+                                           GGMLLanguageModel *model)
 {
   GGMLLanguageModelRef *ref = g_new0 (GGMLLanguageModelRef, 1);
 
+  ref->service_state = state;
+  ref->key = g_strdup (key);
   ref->model = ggml_language_model_ref (model);
-  ref->use_count = 0;
+  ref->ref_count = 1;
+
+  /* If we created the language model, we should now add it to our dictionary
+   * so that we can keep track of it later. */
+  g_hash_table_insert (state->models,
+                       g_strdup (ref->key),
+                       ref);
 
   return ref;
 }
 
-void
-ggml_language_model_ref_free (GGMLLanguageModelRef *ref)
+GGMLLanguageModelRef *
+ggml_language_model_ref_add (GGMLLanguageModelRef *ref)
 {
-  g_assert (ref->use_count == 0);
-
-  g_clear_pointer (&ref->model, ggml_language_model_unref);
-  g_clear_pointer (&ref, g_free);
+  ++ref->ref_count;
+  return ref;
 }
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelRef, ggml_language_model_ref_free);
+void
+ggml_language_model_ref_drop (GGMLLanguageModelRef *ref)
+{
+  if (--ref->ref_count == 0)
+    {
+      /* We drop it from the hash table as well */
+      g_hash_table_remove (ref->service_state->models, ref->key);
+
+      g_clear_pointer (&ref->key, g_free);
+      g_clear_pointer (&ref->model, ggml_language_model_unref);
+      g_clear_pointer (&ref, g_free);
+    }
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLLanguageModelRef, ggml_language_model_ref_drop);
 
 typedef void (*ExecWithModelCallback) (GGMLLanguageModelRef *model,
                                        GError               *error,
@@ -407,14 +432,10 @@ on_loaded_defined_model (GObject      *source_object,
     }
 
   /* Call the closure callback with the ref */
-  g_autoptr(GGMLLanguageModelRef) language_model_ref = ggml_language_model_ref_new (language_model);
+  g_autoptr(GGMLLanguageModelRef) language_model_ref = ggml_service_state_language_model_ref_new (closure->service_state,
+                                                                                                  closure->key,
+                                                                                                  language_model);
   (*closure->callback) (language_model_ref, NULL, closure->user_data);
-
-  /* If we created the language model, we should now add it to our dictionary
-   * so that we can keep track of it later. */
-  g_hash_table_insert (closure->service_state->models,
-                       closure->key,
-                       g_steal_pointer (&language_model_ref));
 }
 
 void
@@ -434,7 +455,10 @@ ggml_service_ref_model_async (GGMLServiceState      *service,
 
   if (language_model_ref != NULL)
     {
-      (*callback) (language_model_ref, NULL, user_data);
+      /* Add a ref to the existing ref */
+      (*callback) (ggml_language_model_ref_add (language_model_ref),
+                   NULL,
+                   user_data);
       return;
     }
 
@@ -543,24 +567,26 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC (CreateCompletionClosure, create_completion_closur
 
 typedef struct _GGMLSessionCompletion {
   /* weak reference */
-  GGMLSession   *parent_session;
+  GGMLServiceConnection             *parent_connection;
 
+  GGMLLanguageModelRef              *ref;
   GGMLLanguageModelCompletionCursor *cursor;
   GGMLLanguageModelCompletion       *completion_skeleton;
   size_t ref_count;
 } GGMLSessionCompletion;
 
 GGMLSessionCompletion *
-ggml_session_completion_new (GGMLSession *parent_session,
-                             GGMLLanguageModel  *model,
-                             const gchar        *prompt,
-                             gint                max_tokens)
+ggml_session_completion_new (GGMLServiceConnection *parent_connection,
+                             GGMLLanguageModelRef  *ref,
+                             const gchar           *prompt,
+                             gint                   max_tokens)
 {
   GGMLSessionCompletion *completion = g_new0 (GGMLSessionCompletion, 1);
 
-  completion->parent_session = parent_session;
+  completion->parent_connection = parent_connection;
   completion->completion_skeleton = ggml_language_model_completion_skeleton_new ();
-  completion->cursor = ggml_language_model_create_completion (model, prompt, max_tokens);
+  completion->ref = ggml_language_model_ref_add (ref);
+  completion->cursor = ggml_language_model_create_completion (ref->model, prompt, max_tokens);
   completion->ref_count = 1;
 
   return completion;
@@ -571,7 +597,8 @@ ggml_session_completion_unref (GGMLSessionCompletion *completion)
 {
   if (--completion->ref_count == 0)
     {
-      g_clear_object  (&completion->completion_skeleton);
+      g_clear_object (&completion->completion_skeleton);
+      g_clear_pointer (&completion->ref, ggml_language_model_ref_drop);
       g_clear_pointer (&completion->cursor, ggml_language_model_completion_cursor_unref);
       g_clear_pointer (&completion, g_free);
     }
@@ -689,10 +716,12 @@ on_handle_completion_exec (GGMLLanguageModelCompletion *completion_skeleton,
 }
 
 void
-on_create_completion_obtained_model_ref (GGMLLanguageModelRef *ref,
+on_create_completion_obtained_model_ref (GGMLLanguageModelRef *model_ref_floating,
                                          GError               *error,
                                          gpointer              user_data)
 {
+  /* We have to consume the reference now */
+  g_autoptr(GGMLLanguageModelRef) model_ref = model_ref_floating;
   g_autoptr(CreateCompletionClosure) closure = user_data;
 
   if (error != NULL)
@@ -702,14 +731,15 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *ref,
       return;
     }
 
-  /* Create a completion */
-  g_autoptr(GGMLSessionCompletion) completion = ggml_session_completion_new (closure->conn->session,
-                                                                             ref->model,
+  /* Export a completion object on the bus */
+  g_autofree char *completion_object_path = g_strdup_printf ("/org/ggml/LanguageModelCompletion/%zu",
+                                                             closure->conn->cursor_serial);
+
+  /* Create a completion. This takes a ref on the model_ref */
+  g_autoptr(GGMLSessionCompletion) completion = ggml_session_completion_new (closure->conn,
+                                                                             model_ref,
                                                                              closure->prompt,
                                                                              closure->max_tokens);
-
-  g_autofree char *completion_object_path = g_strdup_printf ("/org/ggml/LanguageModelCompletion/%zu",
-                                                            closure->conn->cursor_serial++);
 
   /* Expose the /org/ggml/LanguageModelCompletion/n object */
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (completion->completion_skeleton),
@@ -717,18 +747,19 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *ref,
                                          completion_object_path,
                                          &error))
     {
+      /* If this fails, then completion will go away, as we don't ref
+       * it and add it to the hash table */
       g_error ("Failed to export LanguageModelCompletion object: %s", error->message);
       g_main_loop_quit (closure->conn->parent_state->loop);
       return;
     }
 
+  ++closure->conn->cursor_serial;
+
   /* Now that we have that, we can add the connnection to the hash table */
   g_hash_table_insert (closure->conn->cursors,
                        g_strdup (completion_object_path),
                        ggml_session_completion_ref (completion));
-
-  /* Now we take the ref and create a cursor on the bus */
-  ++ref->use_count;
 
   ggml_session_complete_create_completion (closure->object,
                                            closure->invocation,
