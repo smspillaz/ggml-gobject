@@ -299,7 +299,6 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       const mark = buffer.get_mark("predictions-start");
       const beginIter = buffer.get_iter_at_mark(mark);
       const endIter = buffer.get_end_iter();
-      this._textBufferState = STATE_TEXT_EDITOR;
       buffer.delete(beginIter, endIter);
       buffer.delete_mark(mark);
     };
