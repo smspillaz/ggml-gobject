@@ -35,6 +35,7 @@ struct _GGMLLanguageModelCompletionCursor {
   size_t max_completion_tokens;
   size_t memory_position;
   int32_t most_recent_token;
+  gboolean is_executing;
   size_t ref_count;
 };
 
@@ -438,6 +439,13 @@ ggml_language_model_complete_thread_push_tokens_or_error (GGMLLanguageModelCompl
     NULL
   );
   ggml_language_model_complete_thread_queue_push (state, g_steal_pointer (&completion));
+
+  /* If this is the is_complete chunk, then we're no longer executing
+   * and can remove the gate */
+  if (is_complete == TRUE)
+    {
+      state->cursor->is_executing = FALSE;
+    }
 }
 
 static gpointer
@@ -448,7 +456,26 @@ ggml_language_model_complete_cursor_thread_loop (gpointer data)
   size_t   out_n_prompt_tokens = 0;
   int32_t  n_completed_iterations = 0;
   g_autoptr(GError) error = NULL;
-  g_autoptr(GHashTable) inference_parameters = g_hash_table_new_full (g_str_hash, g_str_equal, NULL , NULL);
+  g_autoptr(GHashTable) inference_parameters = NULL;
+
+  /* Gate behind the is_executing variable. If we are already executing and
+   * re-called this function, then we have to return an error */
+  if (state->cursor->is_executing == TRUE)
+    {
+      g_autoptr(GError) error = g_error_new (G_IO_ERROR,
+                                             G_IO_ERROR_FAILED,
+                                             "Already executing on this cursor");
+      ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                                NULL,
+                                                                FALSE,
+                                                                FALSE,
+                                                                g_steal_pointer (&error));
+      return GINT_TO_POINTER (FALSE);
+    }
+
+  state->cursor->is_executing = TRUE;
+
+  inference_parameters = g_hash_table_new_full (g_str_hash, g_str_equal, NULL , NULL);
 
   /* Allocate space for a chunk buffer to save processed tokens into */
   g_autoptr(GArray) chunk_tokens = g_array_sized_new (FALSE, TRUE, sizeof (int32_t), state->chunk_size);
