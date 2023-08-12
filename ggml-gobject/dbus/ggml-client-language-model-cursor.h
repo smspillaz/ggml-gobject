@@ -41,15 +41,21 @@ typedef void (*GGMLClientLanguageModelCursorChunkCallback) (const char *chunk,
 
 GGMLClientLanguageModelCursor * ggml_client_language_model_cursor_ref (GGMLClientLanguageModelCursor *cursor);
 void ggml_client_language_model_cursor_unref (GGMLClientLanguageModelCursor *cursor);
+void ggml_client_language_model_cursor_destroy (GGMLClientLanguageModelCursor *cursor);
 
-void ggml_client_language_model_cursor_exec_async (GGMLClientLanguageModelCursor *cursor,
-                                                   size_t                         num_tokens,
-                                                   GCancellable                  *cancellable,
-                                                   GAsyncReadyCallback            callback,
-                                                   gpointer                       user_data);
-char * ggml_client_language_model_cursor_exec_finish (GGMLClientLanguageModelCursor  *cursor,
-                                                      GAsyncResult                   *result,
-                                                      GError                        **error);
+void ggml_client_language_model_cursor_exec_stream_async (GGMLClientLanguageModelCursor              *cursor,
+                                                          size_t                                      num_tokens,
+                                                          size_t                                      stream_chunk_size,
+                                                          GCancellable                               *cancellable,
+                                                          GGMLClientLanguageModelCursorChunkCallback  chunk_callback,
+                                                          gpointer                                    chunk_callback_data,
+                                                          GDestroyNotify                              chunk_callback_destroy,
+                                                          GAsyncReadyCallback                         callback,
+                                                          gpointer                                    user_data);
+char * ggml_client_language_model_cursor_exec_stream_finish (GGMLClientLanguageModelCursor  *cursor,
+                                                             GAsyncResult                   *result,
+                                                             gboolean                       *out_is_complete_eos,
+                                                             GError                        **error);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLClientLanguageModelCursor, ggml_client_language_model_cursor_unref)
 

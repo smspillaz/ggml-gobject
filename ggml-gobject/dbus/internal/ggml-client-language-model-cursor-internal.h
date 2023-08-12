@@ -28,9 +28,6 @@
 G_BEGIN_DECLS
 
 GGMLClientLanguageModelCursor *
-ggml_client_language_model_cursor_new (GGMLLanguageModelCompletion                *proxy,
-                                       GGMLClientLanguageModelCursorChunkCallback  callback,
-                                       gpointer                                    user_data,
-                                       GDestroyNotify                              user_data_destroy);
+ggml_client_language_model_cursor_new (GGMLLanguageModelCompletion *proxy);
 
 G_END_DECLS

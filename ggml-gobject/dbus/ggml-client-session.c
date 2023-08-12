@@ -73,9 +73,6 @@ ggml_client_session_unref (GGMLClientSession *session_client)
 }
 
 typedef struct {
-  GGMLClientLanguageModelCursorChunkCallback chunk_callback;
-  gpointer chunk_callback_data;
-  GDestroyNotify chunk_callback_destroy;
   GCancellable *cancellable;
   GGMLClientSession *session_client;
   GAsyncReadyCallback callback;
@@ -84,18 +81,12 @@ typedef struct {
 
 static CallCreateCompletionClosure *
 call_create_completion_closure_new (GGMLClientSession                          *session_client,
-                                    GGMLClientLanguageModelCursorChunkCallback  chunk_callback,
-                                    gpointer                                    chunk_callback_data,
-                                    GDestroyNotify                              chunk_callback_destroy,
                                     GCancellable                               *cancellable,
                                     GAsyncReadyCallback                         callback,
                                     gpointer                                    user_data)
 {
   CallCreateCompletionClosure *closure = g_new0 (CallCreateCompletionClosure, 1);
   closure->session_client = ggml_client_session_ref (session_client);
-  closure->chunk_callback = chunk_callback;
-  closure->chunk_callback_data = chunk_callback_data;
-  closure->chunk_callback_destroy = chunk_callback_destroy;
   closure->cancellable = cancellable != NULL ? g_object_ref (cancellable) : NULL;
   closure->callback = callback;
   closure->user_data = user_data;
@@ -106,7 +97,6 @@ call_create_completion_closure_new (GGMLClientSession                          *
 static void
 call_create_completion_closure_free (CallCreateCompletionClosure *closure)
 {
-  g_clear_pointer (&closure->chunk_callback_data, closure->chunk_callback_destroy);
   g_clear_object (&closure->cancellable);
   g_clear_pointer (&closure->session_client, ggml_client_session_unref);
   g_clear_pointer (&closure, g_free);
@@ -131,10 +121,7 @@ on_completion_object_ready (GObject       *source_object,
       return;
     }
 
-  g_autoptr(GGMLClientLanguageModelCursor) cursor_client = ggml_client_language_model_cursor_new (completion_proxy,
-                                                                                                  g_steal_pointer (&closure->chunk_callback),
-                                                                                                  g_steal_pointer (&closure->chunk_callback_data),
-                                                                                                  g_steal_pointer (&closure->chunk_callback_destroy));
+  g_autoptr(GGMLClientLanguageModelCursor) cursor_client = ggml_client_language_model_cursor_new (completion_proxy);
   g_task_return_pointer (task, g_steal_pointer (&cursor_client), (GDestroyNotify) ggml_client_language_model_cursor_unref);
 }
 
@@ -180,12 +167,6 @@ on_call_create_completion_reply (GObject      *source_object,
  * @quantization: (nullable): The quantization level to use
  * @prompt: The initial prompt to start the model with
  * @max_tokens: Maximum number of tokens to be generated
- * @chunk_callback: (nullable): A #GGMLClientLanguageModelCursorChunkCallback which will
- *                  be called every time a new chunk is generated. This is useful for
- *                  applications where you want to stream the result as it is being generated
- *                  in real-time.
- * @chunk_callback_data: (nullable) (closure chunk_callback): Some user data for @chunk_callback
- * @chunk_callback_destroy: (nullable) (destroy chunk_callback): A #GDestroyNotify for @chunk_callback_data
  * @cancellable: (nullable): A #GCancellable
  * @callback: A #GAsyncReadyCallback to be called when the completion object is ready
  * @user_data: (closure callback): User data for @callback.
@@ -200,17 +181,11 @@ ggml_client_session_start_completion_async (GGMLClientSession                   
                                             const char                                 *quantization,
                                             const char                                 *prompt,
                                             size_t                                      max_tokens,
-                                            GGMLClientLanguageModelCursorChunkCallback  chunk_callback,
-                                            gpointer                                    chunk_callback_data,
-                                            GDestroyNotify                              chunk_callback_destroy,
                                             GCancellable                               *cancellable,
                                             GAsyncReadyCallback                         callback,
                                             gpointer                                    user_data)
 {
   g_autoptr(CallCreateCompletionClosure) closure = call_create_completion_closure_new (session_client,
-                                                                                       chunk_callback,
-                                                                                       chunk_callback_data,
-                                                                                       chunk_callback_destroy,
                                                                                        cancellable,
                                                                                        callback,
                                                                                        user_data);

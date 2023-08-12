@@ -46,9 +46,6 @@ void ggml_client_session_start_completion_async (GGMLClientSession              
                                                  const char                                 *quantization,
                                                  const char                                 *prompt,
                                                  size_t                                      max_tokens,
-                                                 GGMLClientLanguageModelCursorChunkCallback  chunk_callback,
-                                                 gpointer                                    chunk_callback_data,
-                                                 GDestroyNotify                              chunk_callback_destroy,
                                                  GCancellable                               *cancellable,
                                                  GAsyncReadyCallback                         callback,
                                                  gpointer                                    user_data);

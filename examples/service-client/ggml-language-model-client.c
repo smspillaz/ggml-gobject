@@ -83,9 +83,10 @@ on_done_complete_exec (GObject      *source_object,
 
   printf("\n");
 
-  completed_string = ggml_client_language_model_cursor_exec_finish (state->cursor,
-                                                                    result,
-                                                                    &error);
+  completed_string = ggml_client_language_model_cursor_exec_stream_finish (state->cursor,
+                                                                           result,
+                                                                           NULL,
+                                                                           &error);
 
   if (completed_string == NULL)
     {
@@ -116,11 +117,15 @@ on_completion_object_ready (GObject      *source_object,
 
   state->cursor = ggml_client_language_model_cursor_ref (cursor);
 
-  ggml_client_language_model_cursor_exec_async (cursor,
-                                                64,
-                                                NULL,
-                                                on_done_complete_exec,
-                                                g_steal_pointer (&state));
+  ggml_client_language_model_cursor_exec_stream_async (cursor,
+                                                       64,
+                                                       2,
+                                                       NULL,
+                                                       on_new_chunk_from_completion,
+                                                       NULL,
+                                                       NULL,
+                                                       on_done_complete_exec,
+                                                       g_steal_pointer (&state));
 }
 
 static void
@@ -147,9 +152,6 @@ on_client_session_ready (GObject      *source_object,
                                               "f16",
                                               "The meaning of life is:",
                                               128,
-                                              on_new_chunk_from_completion,
-                                              NULL,
-                                              NULL,
                                               NULL,
                                               on_completion_object_ready,
                                               g_steal_pointer (&state));
