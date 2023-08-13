@@ -5,9 +5,7 @@
 A GObject binding for [GGML](https://github.com/ggerganov/ggml).
 
 A simple "hello world" example works, eg, loading the GPT2 model weights
-and doing inference on a simple sentence. However the user currently has to
-do a lot of heavy lifting and there are many assumptions about memory consumption,
-since internally GGML does not allocate any memory.
+and doing inference on a simple sentence.
 
 See [here](tests/js/testLoadGPT2.js) for an example of using the bound API from gjs.
 
