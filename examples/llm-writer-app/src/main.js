@@ -346,6 +346,14 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       title: GLib.get_application_name(),
       show_close_button: true
     });
+    const menuButton = new Gtk.MenuButton({
+      visible: true,
+      popover: new Gtk.Popover({})
+    });
+    const menuImg = Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.MENU);
+    menuImg.show();
+    menuButton.add(menuImg);
+    header.pack_start(menuButton);
     this._spinner = new Gtk.Spinner({
       visible: true
     });
@@ -370,8 +378,38 @@ const LLMWriterAppMainWindow = GObject.registerClass({
     ], comboboxChangedCallback);
     quantizationCombobox.show();
 
-    header.pack_start(modelCombobox);
-    header.pack_start(quantizationCombobox);
+    const radioVbox = new Gtk.VBox({
+      visible: true
+    });
+
+    const localModeRadio = Gtk.RadioButton.new_with_label_from_widget(null, "Local");
+    localModeRadio.connect("toggled", () => {
+      maybeAbortPrediction();
+      this._cursor_manager.destroy();
+      this._cursor_manager = new LocalCursorManager();
+    });
+    localModeRadio.show();
+    radioVbox.pack_start(localModeRadio, false, false, 1);
+
+    const serviceModeRadio = Gtk.RadioButton.new_with_label_from_widget(localModeRadio, "DBus");
+    serviceModeRadio.connect("toggled", () => {
+      maybeAbortPrediction();
+      this._cursor_manager.destroy();
+      this._cursor_manager = new DBusCursorManager();
+    });
+    serviceModeRadio.show();
+    radioVbox.pack_start(serviceModeRadio, false, false, 1);
+
+    const menuVbox = new Gtk.VBox({
+      visible: true,
+      margin: 5,
+      spacing: 5
+    });
+    menuVbox.pack_start(modelCombobox, false, false, 1);
+    menuVbox.pack_start(quantizationCombobox, false, false, 1);
+    menuVbox.pack_start(radioVbox, false, false, 1);
+
+    menuButton.popover.add(menuVbox);
     header.pack_end(this._spinner);
     this.set_titlebar(header);
 
