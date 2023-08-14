@@ -172,6 +172,7 @@ class LocalCursorManager {
     this._model_loader = new ModelLoader();
     this._current_cursor = null;
     this._current_base_text = null;
+    this._destroyed = false;
   }
 
   with_cursor(base_text,
@@ -188,8 +189,10 @@ class LocalCursorManager {
         quantization_enum,
         cancellable,
         model => {
-          this._current_cursor = model.create_completion(base_text, 256);
-          return callback(this._current_cursor);
+          if (!this._destroyed) {
+            this._current_cursor = model.create_completion(base_text, 256);
+            return callback(this._current_cursor);
+          }
         },
         progress_callback
       );
@@ -198,6 +201,11 @@ class LocalCursorManager {
 
   invalidate_cursor() {
     this._current_cursor = null;
+  }
+
+  destroy() {
+    this._destroyed = true;
+    this.invalidate_cursor();
   }
 }
 
@@ -225,6 +233,7 @@ class DBusCursorManager {
     this._current_cursor = null;
     this._current_base_text = null;
     this._invoke_callback = null;
+    this._destroyed = false;
   }
 
   with_cursor(base_text,
@@ -256,9 +265,11 @@ class DBusCursorManager {
         256,
         cancellable,
         (obj, result) => {
-          this._current_cursor = GGMLClient.Session.start_completion_finish(result);
-          this._loading = false;
-          this._invoke_callback(this._current_cursor);
+          if (!this._destroyed) {
+            this._current_cursor = GGMLClient.Session.start_completion_finish(result);
+            this._loading = false;
+            this._invoke_callback(this._current_cursor);
+          }
         }
       );
     };
@@ -279,6 +290,11 @@ class DBusCursorManager {
     }
     this._current_cursor = null;
     System.gc();
+  }
+
+  destroy() {
+    this._destroyed = true;
+    this.invalidate_cursor();
   }
 }
 
