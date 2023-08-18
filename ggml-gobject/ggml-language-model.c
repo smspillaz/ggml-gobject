@@ -1103,8 +1103,9 @@ ggml_language_model_completion_cursor_exec (GGMLLanguageModelCompletionCursor  *
                                                                                             async_queue,
                                                                                             cancellable);
 
-  /* Execute synchronously on the main thread */
-  ggml_language_model_complete_cursor_thread_loop (state);
+  /* Execute synchronously on the main thread. The complete function takes
+   * ownership of state, so we steal it here, as its effectively transfer-full */
+  ggml_language_model_complete_cursor_thread_loop (g_steal_pointer (&state));
 
   g_autoptr(GPtrArray) completions_ptr_array = g_ptr_array_new_full (g_async_queue_length (async_queue) + 1, g_free);
 
