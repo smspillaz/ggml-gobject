@@ -7,6 +7,7 @@ ggml_gobject_headers_subdir = 'ggml-gobject'
 
 ggml_gobject_toplevel_introspectable_headers = files([
   'ggml-cached-model.h',
+  'ggml-closure.h',
   'ggml-compute-graph.h',
   'ggml-compute-plan.h',
   'ggml-context.h',
@@ -26,6 +27,7 @@ ggml_gobject_toplevel_introspectable_headers = files([
 ])
 ggml_gobject_toplevel_introspectable_sources = files([
   'ggml-cached-model.c',
+  'ggml-closure.c',
   'ggml-compute-graph.c',
   'ggml-compute-plan.c',
   'ggml-context.c',
@@ -50,6 +52,7 @@ ggml_gobject_toplevel_internal_sources = files([
 ])
 ggml_gobject_toplevel_internal_headers = files([
   'internal/ggml-async-queue-source.h',
+  'internal/ggml-closure-internal.h',
   'internal/ggml-context-internal.h',
   'internal/ggml-progress-istream.h',
   'internal/ggml-stream-internal.h',
