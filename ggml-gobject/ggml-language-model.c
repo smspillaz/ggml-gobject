@@ -20,6 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <ggml-gobject/ggml-argmax-language-model-sampler.h>
 #include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-execution-memory.h>
 #include <ggml-gobject/ggml-gpt.h>
@@ -31,6 +32,7 @@
 struct _GGMLLanguageModelCompletionCursor {
   GGMLLanguageModel *language_model;
   GGMLExecutionMemory *execution_memory;
+  GGMLLanguageModelSampler *sampler;
   char *prompt;
   size_t max_completion_tokens;
   size_t memory_position;
@@ -53,6 +55,7 @@ ggml_language_model_completion_cursor_unref (GGMLLanguageModelCompletionCursor *
     {
       g_clear_pointer (&cursor->language_model, ggml_language_model_unref);
       g_clear_pointer (&cursor->execution_memory, ggml_execution_memory_unref);
+      g_clear_pointer (&cursor->sampler, g_object_unref);
       g_clear_pointer (&cursor->prompt, g_free);
       g_clear_pointer (&cursor, g_free);
     }
@@ -212,34 +215,17 @@ ggml_language_model_new (GGMLHyperparameters *hyperparameters,
   return language_model;
 }
 
-static size_t
-argmax_f (float *elements, size_t num_elements)
-{
-  size_t max_idx = 0;
-  float max_val = -G_MAXFLOAT;
-
-  for (size_t i = 0; i < num_elements; ++i)
-    {
-      if (elements[i] > max_val)
-        {
-          max_idx = i;
-          max_val = elements[i];
-        }
-    }
-
-  return max_idx;
-}
-
 static gboolean
-ggml_language_model_forward_single_iteration (GGMLModel            *model,
-                                              GGMLHyperparameters  *hyperparameters,
-                                              GHashTable           *inference_parameters,
-                                              GGMLExecutionMemory  *execution_memory,
-                                              int32_t              *input_tokens,
-                                              size_t                n_input_tokens,
-                                              GCancellable         *cancellable,
-                                              int32_t              *out_token,
-                                              GError              **error)
+ggml_language_model_forward_single_iteration (GGMLModel                 *model,
+                                              GGMLHyperparameters       *hyperparameters,
+                                              GHashTable                *inference_parameters,
+                                              GGMLExecutionMemory       *execution_memory,
+                                              GGMLLanguageModelSampler  *sampler,
+                                              int32_t                   *input_tokens,
+                                              size_t                     n_input_tokens,
+                                              GCancellable              *cancellable,
+                                              int32_t                   *out_token,
+                                              GError                   **error)
 {
   int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
   g_autoptr(GVariant) variant = g_variant_ref_sink(g_variant_new_fixed_array (G_VARIANT_TYPE_INT32,
@@ -263,7 +249,18 @@ ggml_language_model_forward_single_iteration (GGMLModel            *model,
   size_t logits_tensor_n_bytes;
   float *logits_tensor_data = (float *) ggml_tensor_get_data (logits_tensor, &logits_tensor_n_bytes);
   float *end_logit_data = logits_tensor_data + (((int32_t) (n_input_tokens - 1)) * n_vocab);
-  *out_token = argmax_f (end_logit_data, n_vocab);
+
+  size_t n_tokens;
+  size_t logits_shape[] = { n_vocab };
+
+  g_autofree size_t *tokens = ggml_language_model_sampler_sample_logits_tensor (sampler,
+                                                                                end_logit_data,
+                                                                                logits_shape[0],
+                                                                                logits_shape,
+                                                                                1,
+                                                                                &n_tokens);
+
+  *out_token = tokens[0];
 
   return TRUE;
 }
@@ -595,6 +592,7 @@ ggml_language_model_complete_cursor_thread_loop (gpointer data)
                                                          state->cursor->language_model->hyperparameters,
                                                          inference_parameters,
                                                          state->cursor->execution_memory,
+                                                         state->cursor->sampler,
                                                          forward_input_tokens_ptr,
                                                          n_forward_input_tokens,
                                                          state->cancellable,
@@ -804,6 +802,7 @@ ggml_language_model_create_completion (GGMLLanguageModel *language_model,
   GGMLLanguageModelCompletionCursor *cursor = g_new0 (GGMLLanguageModelCompletionCursor, 1);
   cursor->language_model = ggml_language_model_ref (language_model);
   cursor->execution_memory = NULL;
+  cursor->sampler = ggml_argmax_language_model_sampler_new ();
   cursor->prompt = g_strdup (prompt);
   cursor->max_completion_tokens = max_completion_tokens;
   cursor->memory_position = 0;
@@ -811,6 +810,24 @@ ggml_language_model_create_completion (GGMLLanguageModel *language_model,
 
   return cursor;
 }
+
+/**
+ * ggml_language_model_completion_cursor_set_sampler:
+ * @cursor: A #GGMLLanguageModelCompletionCursor
+ * @sampler: (transfer none): A #GGMLLanguageModelSampler
+ *
+ * Set the sampler used for this cursor. The sampler determines how the model outputs
+ * are converted into tokens. The default is to use deterministic sampling, eg,
+ * argmax sampling, but this can lead to unnatural generations.
+ */
+void
+ggml_language_model_completion_cursor_set_sampler (GGMLLanguageModelCompletionCursor *cursor,
+                                                   GGMLLanguageModelSampler *sampler)
+{
+  g_clear_object (&cursor->sampler);
+  cursor->sampler = g_object_ref (sampler);
+}
+
 
 /**
  * ggml_language_model_completion_cursor_exec_stream_async:

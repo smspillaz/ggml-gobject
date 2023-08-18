@@ -26,6 +26,7 @@
 #include <gio/gio.h>
 #include <ggml-gobject/ggml-cached-model.h>
 #include <ggml-gobject/ggml-hyperparameters.h>
+#include <ggml-gobject/ggml-language-model-sampler.h>
 #include <ggml-gobject/ggml-model-desc.h>
 #include <ggml-gobject/ggml-model-config.h>
 #include <ggml-gobject/ggml-model.h>
@@ -153,9 +154,12 @@ char * ggml_language_model_decode_tokens (GGMLLanguageModel *language_model,
                                           int32_t           *tokens,
                                           size_t             length);
 
-GGMLLanguageModelCompletionCursor * ggml_language_model_create_completion (GGMLLanguageModel *language_model,
-                                                                           const char        *prompt,
-                                                                           size_t             max_completion_tokens);
+GGMLLanguageModelCompletionCursor * ggml_language_model_create_completion (GGMLLanguageModel        *language_model,
+                                                                           const char               *prompt,
+                                                                           size_t                    max_completion_tokens);
+
+void ggml_language_model_completion_cursor_set_sampler (GGMLLanguageModelCompletionCursor *cursor,
+                                                        GGMLLanguageModelSampler *sampler);
 
 typedef void (*GGMLLanguageModelCompletionCursorStreamFunc) (const char *decoded,
                                                              gboolean    is_complete_eos,
