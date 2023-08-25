@@ -444,6 +444,26 @@ describe('GGML GPT2', function() {
       ['The meaning of life is: to live in a world of abundance', false]
     );
   });
+  it('can do a forward pass with the top-k-top-p sampler', function() {
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2P177M,
+      istream,
+      null,
+      null
+    );
+    const cursor = language_model.create_completion('The meaning of life is:', 32);
+    cursor.set_sampler(new GGML.TopKTopPLanguageModelSampler({
+      top_k: 5,
+      top_p: 0.5,
+      seed: 0,
+    }));
+
+    expect(cursor.exec(7, null)).toEqual(
+      ['The meaning of life is:\n\nThe life of the soul', false]
+    );
+  });
   it('can resume a forward pass through some data', function() {
     const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
 

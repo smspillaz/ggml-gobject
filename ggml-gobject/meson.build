@@ -26,6 +26,7 @@ ggml_gobject_toplevel_introspectable_headers = files([
   'ggml-quantize.h',
   'ggml-tensor.h',
   'ggml-token-dictionary.h',
+  'ggml-top-k-top-p-language-model-sampler.h',
   'ggml-types.h',
 ])
 ggml_gobject_toplevel_introspectable_sources = files([
@@ -49,6 +50,7 @@ ggml_gobject_toplevel_introspectable_sources = files([
   'ggml-quantize.c',
   'ggml-tensor.c',
   'ggml-token-dictionary.c',
+  'ggml-top-k-top-p-language-model-sampler.c',
   'ggml-types.c',
 ])
 ggml_gobject_toplevel_internal_sources = files([
