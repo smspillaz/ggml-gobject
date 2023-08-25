@@ -191,6 +191,10 @@ class LocalCursorManager {
         model => {
           if (!this._destroyed) {
             this._current_cursor = model.create_completion(base_text, 256);
+            this._current_cursor.set_sampler(new GGML.TopKTopPLanguageModelSampler({
+              top_k: 500,
+              top_p: 1.0
+            }));
             return callback(this._current_cursor);
           }
         },
