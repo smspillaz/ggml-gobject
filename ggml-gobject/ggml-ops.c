@@ -172,6 +172,27 @@ ggml_op_permute (GGMLContext *context,
 }
 
 /**
+ * ggml_op_diag_mask_inf:
+ * @context: A #GGMLContext
+ * @tensor: A #GGMLTensor
+ * @n_past: Number of past
+ *
+ * Causally mask the 2D input tensor with inf values
+ *
+ * Returns: (transfer full): A new #GGMLTensor
+ */
+GGMLTensor *
+ggml_op_diag_mask_inf (GGMLContext *context,
+                       GGMLTensor  *tensor,
+                       int          n_past)
+{
+  return ggml_tensor_from_tensor (context,
+                                  ggml_diag_mask_inf (context->ctx,
+                                                      tensor->tensor,
+                                                      n_past));
+}
+
+/**
  * ggml_op_diag_mask_inf_inplace:
  * @context: A #GGMLContext
  * @tensor: A #GGMLTensor
@@ -353,6 +374,17 @@ GGML_DEFINE_BINARY_OP_BINDING (repeat)
  * Returns: (transfer full): A new #GGMLTensor with the result
  */
 GGML_DEFINE_UNARY_OP_BINDING (soft_max_inplace)
+
+/**
+ * ggml_op_soft_max:
+ * @context: A #GGMLContext
+ * @operand1: A #GGMLTensor
+ *
+ * Computes softmax over @operand1
+ *
+ * Returns: (transfer full): A new #GGMLTensor with the result
+ */
+GGML_DEFINE_UNARY_OP_BINDING (soft_max)
 
 /**
  * ggml_op_transpose:

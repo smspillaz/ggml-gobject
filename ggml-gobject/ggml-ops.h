@@ -42,6 +42,7 @@ GGML_DECLARE_BINARY_OP_BINDING (get_rows)
 GGML_DECLARE_BINARY_OP_BINDING (scale_inplace)
 GGML_DECLARE_BINARY_OP_BINDING (repeat)
 GGML_DECLARE_UNARY_OP_BINDING (soft_max_inplace)
+GGML_DECLARE_UNARY_OP_BINDING (soft_max)
 GGML_DECLARE_UNARY_OP_BINDING (transpose)
 GGML_DECLARE_UNARY_OP_BINDING (gelu)
 
@@ -53,6 +54,7 @@ GGMLTensor * ggml_op_reshape_2d (GGMLContext *context, GGMLTensor *tensor, int64
 GGMLTensor * ggml_op_reshape_3d (GGMLContext *context, GGMLTensor *tensor, int64_t size1, int64_t size2, int64_t size3);
 GGMLTensor * ggml_op_permute (GGMLContext *context, GGMLTensor *tensor, int ax1, int ax2, int ax3, int ax4);
 
+GGMLTensor * ggml_op_diag_mask_inf (GGMLContext *context, GGMLTensor *tensor, int n_past);
 GGMLTensor * ggml_op_diag_mask_inf_inplace (GGMLContext *context, GGMLTensor *tensor, int n_past);
 GGMLTensor * ggml_op_diag_mask_zero_inplace (GGMLContext *context, GGMLTensor *tensor, int n_past);
 GGMLTensor * ggml_op_norm (GGMLContext *context, GGMLTensor *tensor, float eps);
