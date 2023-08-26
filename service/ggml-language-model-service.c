@@ -572,8 +572,8 @@ typedef struct {
   char                  *prompt;
   unsigned int           top_k;
   float                  top_p;
-  unsigned int           seed_set;
-  gboolean               seed;
+  unsigned int           seed;
+  gboolean               seed_set;
   int                    max_tokens;
 } CreateCompletionClosure;
 
@@ -584,8 +584,8 @@ create_completion_closure_new (GGMLSession           *object,
                                const char            *prompt,
                                unsigned int           top_k,
                                float                  top_p,
-                               unsigned int           seed_set,
-                               gboolean               seed,
+                               unsigned int           seed,
+                               gboolean               seed_set,
                                int                    max_tokens)
 {
   CreateCompletionClosure *closure = g_new0 (CreateCompletionClosure, 1);
@@ -900,6 +900,7 @@ read_sampler_properties (GVariant     *properties,
   unsigned int top_k = 1;
   float        top_p = 1.0f;
   unsigned int seed = 0;
+  gboolean     seed_set = FALSE;
 
   GVariantIter iter;
   g_variant_iter_init (&iter, properties);
@@ -922,13 +923,14 @@ read_sampler_properties (GVariant     *properties,
       if (g_strcmp0 (key, "sampler_seed") == 0)
         {
           seed = g_variant_get_uint32 (value);
-          *out_seed_set = TRUE;
+          seed_set = TRUE;
         }
     }
 
   *out_top_k = top_k;
   *out_top_p = top_p;
   *out_seed = seed;
+  *out_seed_set = seed_set;
 }
 
 gboolean
