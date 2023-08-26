@@ -165,6 +165,7 @@ on_call_create_completion_reply (GObject      *source_object,
  * @quantization: (nullable): The quantization level to use
  * @prompt: The initial prompt to start the model with
  * @max_tokens: Maximum number of tokens to be generated
+ * @properties: A #GVariant of additional properties to pass
  * @cancellable: (nullable): A #GCancellable
  * @callback: A #GAsyncReadyCallback to be called when the completion object is ready
  * @user_data: (closure callback): User data for @callback.
@@ -179,6 +180,7 @@ ggml_client_session_start_completion_async (GGMLClientSession                   
                                             const char                                 *quantization,
                                             const char                                 *prompt,
                                             size_t                                      max_tokens,
+                                            GVariant                                   *properties,
                                             GCancellable                               *cancellable,
                                             GAsyncReadyCallback                         callback,
                                             gpointer                                    user_data)
@@ -191,12 +193,27 @@ ggml_client_session_start_completion_async (GGMLClientSession                   
   g_variant_builder_init (&builder, G_VARIANT_TYPE_ARRAY);
   g_variant_builder_add (&builder, "{sv}", "n_params", g_variant_new_string (model_variant));
   g_variant_builder_add (&builder, "{sv}", "quantization", g_variant_new_string (quantization));
-  g_autoptr(GVariant) properties = g_variant_ref_sink (g_variant_builder_end (&builder));
+
+  if (properties != NULL)
+    {
+      GVariantIter iter;
+      g_variant_iter_init (&iter, properties);
+
+      char *key;
+      GVariant *value;
+
+      while (g_variant_iter_loop (&iter, "{sv}", &key, &value))
+        {
+          g_variant_builder_add (&builder, "{sv}", key, value);
+        }
+    }
+
+  g_autoptr(GVariant) completion_properties = g_variant_ref_sink (g_variant_builder_end (&builder));
 
   /* Now lets create a cursor and start doing some inference */
   ggml_session_call_create_completion (session_client->proxy,
                                        model_name,
-                                       properties,
+                                       completion_properties,
                                        prompt,
                                        max_tokens,
                                        G_DBUS_CALL_FLAGS_NONE,

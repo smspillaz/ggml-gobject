@@ -46,6 +46,7 @@ void ggml_client_session_start_completion_async (GGMLClientSession              
                                                  const char                                 *quantization,
                                                  const char                                 *prompt,
                                                  size_t                                      max_tokens,
+                                                 GVariant                                   *properties,
                                                  GCancellable                               *cancellable,
                                                  GAsyncReadyCallback                         callback,
                                                  gpointer                                    user_data);
