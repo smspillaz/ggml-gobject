@@ -292,8 +292,7 @@ ggml_top_k_top_p_language_model_sampler_class_init (GGMLTopKTopPLanguageModelSam
                                                       0,
                                                       G_MAXUINT,
                                                       0,
-                                                      G_PARAM_READWRITE |
-                                                      G_PARAM_CONSTRUCT));
+                                                      G_PARAM_READWRITE));
 }
 
 static void
