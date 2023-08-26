@@ -114,7 +114,7 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
 
   for (let i = 0; i < n_layer; i++) {
     /* input layer-norm */
-    cur = GGML.op_norm(context, cur);
+    cur = GGML.op_norm(context, cur, 1e-5);
     cur = GGML.op_add(
       context,
       GGML.op_mul(
@@ -229,7 +229,7 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
     /* feedforward */
 
     /* feedforward norm */
-    cur = GGML.op_norm(context, cur);
+    cur = GGML.op_norm(context, cur, 1e-5);
     cur = GGML.op_add(
       context,
       GGML.op_mul(
@@ -294,7 +294,7 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
 
   /* Now we got to the end. Lets do the final norm and
     * project the outputs into logits-space */
-  cur = GGML.op_norm(context, cur);
+  cur = GGML.op_norm(context, cur, 1e-5);
   cur = GGML.op_add(
     context,
     GGML.op_mul(

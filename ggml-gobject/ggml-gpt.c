@@ -151,7 +151,7 @@ ggml_nn_layer_norm (GGMLContext *context,
                     GGMLTensor *elementwise_weight,
                     GGMLTensor *elementwise_bias)
 {
-  g_autoptr(GGMLTensor) norm_output = ggml_op_norm (context, input);
+  g_autoptr(GGMLTensor) norm_output = ggml_op_norm (context, input, 1e-5);
   g_autoptr(GGMLTensor) repeat_elementwise_weight = ggml_op_repeat (context, elementwise_weight, norm_output);
   g_autoptr(GGMLTensor) repeat_elementwise_bias = ggml_op_repeat (context, elementwise_bias, norm_output);
 

@@ -213,6 +213,27 @@ ggml_op_diag_mask_zero_inplace (GGMLContext *context,
                                                                n_past));
 }
 
+/**
+ * ggml_op_norm:
+ * @context: A #GGMLContext
+ * @tensor: A #GGMLTensor
+ * @eps: An epsilon value to add prior to normalization
+ *
+ * Normalize @tensor
+ *
+ * Returns: (transfer full): A new #GGMLTensor with the result
+ */
+GGMLTensor *
+ggml_op_norm (GGMLContext *context,
+              GGMLTensor  *tensor,
+              float        eps)
+{
+  return ggml_tensor_from_tensor (context,
+                                  ggml_norm (context->ctx,
+                                             tensor->tensor,
+                                             eps));
+}
+
 #define GGML_DEFINE_BINARY_OP_BINDING(opname) \
   GGMLTensor * \
   ggml_op_ ## opname (GGMLContext *context, \
@@ -332,17 +353,6 @@ GGML_DEFINE_BINARY_OP_BINDING (repeat)
  * Returns: (transfer full): A new #GGMLTensor with the result
  */
 GGML_DEFINE_UNARY_OP_BINDING (soft_max_inplace)
-
-/**
- * ggml_op_norm:
- * @context: A #GGMLContext
- * @operand1: A #GGMLTensor
- *
- * Normalize @operand1
- *
- * Returns: (transfer full): A new #GGMLTensor with the result
- */
-GGML_DEFINE_UNARY_OP_BINDING (norm)
 
 /**
  * ggml_op_transpose:
