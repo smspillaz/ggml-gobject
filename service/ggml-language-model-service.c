@@ -212,11 +212,49 @@ ggml_service_connection_unref (GGMLServiceConnection *connection)
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLServiceConnection, ggml_service_connection_unref)
 
+static const char *language_model_keys[] = {
+  "n_params",
+  "quantization"
+};
+
+static GVariant *
+variant_dict_filter (GVariant    *variant_dict,
+                     const char **keys_array,
+                     size_t       n_keys)
+{
+  GVariantBuilder builder;
+  GVariantIter iter;
+
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_iter_init (&iter, variant_dict);
+
+  char *key;
+  GVariant *value;
+
+  while (g_variant_iter_next (&iter, "{sv}", &key, &value))
+    {
+      for (size_t i = 0; i < n_keys; ++i)
+        {
+          if (g_strcmp0 (language_model_keys[i], key) == 0)
+            {
+              g_variant_builder_add (&builder, "{sv}", key, value);
+              break;
+            }
+        }
+    }
+
+  return g_variant_builder_end (&builder);
+}
+
 static char *
 language_model_to_key (const char *model_name,
                        GVariant   *properties)
 {
+  g_autoptr(GVariant) filtered_variant = variant_dict_filter (properties,
+                                                              language_model_keys,
+                                                              sizeof (language_model_keys) / sizeof (language_model_keys[0]));
   g_autofree char *variant_props_string = g_variant_print (properties, FALSE);
+
   const char *strings[] = {
     model_name,
     variant_props_string,
@@ -532,6 +570,10 @@ typedef struct {
   GDBusMethodInvocation *invocation;
   GGMLServiceConnection *conn;
   char                  *prompt;
+  unsigned int           top_k;
+  float                  top_p;
+  unsigned int           seed_set;
+  gboolean               seed;
   int                    max_tokens;
 } CreateCompletionClosure;
 
@@ -540,6 +582,10 @@ create_completion_closure_new (GGMLSession           *object,
                                GDBusMethodInvocation *invocation,
                                GGMLServiceConnection *conn,
                                const char            *prompt,
+                               unsigned int           top_k,
+                               float                  top_p,
+                               unsigned int           seed_set,
+                               gboolean               seed,
                                int                    max_tokens)
 {
   CreateCompletionClosure *closure = g_new0 (CreateCompletionClosure, 1);
@@ -548,6 +594,10 @@ create_completion_closure_new (GGMLSession           *object,
   closure->invocation = g_object_ref (invocation);
   closure->conn = ggml_service_connection_ref (conn);
   closure->prompt = g_strdup (prompt);
+  closure->top_k = top_k;
+  closure->top_p = top_p;
+  closure->seed = seed;
+  closure->seed_set = seed_set;
   closure->max_tokens = max_tokens;
 
   return closure;
@@ -782,6 +832,25 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *model_ref_floatin
                                                                              closure->prompt,
                                                                              closure->max_tokens);
 
+  if (closure->top_k != 1)
+    {
+      g_autoptr(GGMLLanguageModelSampler) sampler = NULL;
+
+      if (closure->seed_set)
+        {
+          sampler = ggml_top_k_top_p_language_model_sampler_new_with_seed (closure->top_k,
+                                                                           closure->top_p,
+                                                                           closure->seed);
+        }
+      else
+        {
+          sampler = ggml_top_k_top_p_language_model_sampler_new (closure->top_k,
+                                                                 closure->top_p);
+        }
+
+      ggml_language_model_completion_cursor_set_sampler (completion->cursor, sampler);
+    }
+
   /* Expose the /org/ggml/LanguageModelCompletion/n object */
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (completion->completion_skeleton),
                                          closure->conn->dbus_connection,
@@ -821,6 +890,47 @@ on_create_completion_obtained_model_ref (GGMLLanguageModelRef *model_ref_floatin
   g_message ("Created cursor, exposed object at path %s\n", completion_object_path);
 }
 
+static void
+read_sampler_properties (GVariant     *properties,
+                         unsigned int *out_top_k,
+                         float        *out_top_p,
+                         unsigned int *out_seed,
+                         gboolean     *out_seed_set)
+{
+  unsigned int top_k = 1;
+  float        top_p = 1.0f;
+  unsigned int seed = 0;
+
+  GVariantIter iter;
+  g_variant_iter_init (&iter, properties);
+
+  gchar *key;
+  GVariant *value;
+
+  while (g_variant_iter_loop (&iter, "{sv}", &key, &value))
+    {
+      if (g_strcmp0 (key, "top_k") == 0)
+        {
+          top_k = g_variant_get_uint32 (value);
+        }
+
+      if (g_strcmp0 (key, "top_p") == 0)
+        {
+          top_p = g_variant_get_double (value);
+        }
+
+      if (g_strcmp0 (key, "sampler_seed") == 0)
+        {
+          seed = g_variant_get_uint32 (value);
+          *out_seed_set = TRUE;
+        }
+    }
+
+  *out_top_k = top_k;
+  *out_top_p = top_p;
+  *out_seed = seed;
+}
+
 gboolean
 on_handle_create_completion (GGMLSession           *object,
                              GDBusMethodInvocation *invocation,
@@ -831,10 +941,20 @@ on_handle_create_completion (GGMLSession           *object,
                              gpointer               user_data)
 {
   GGMLServiceConnection *conn = user_data;
+  unsigned int top_k;
+  float        top_p;
+  unsigned int seed;
+  gboolean seed_set;
+
+  read_sampler_properties (properties, &top_k, &top_p, &seed, &seed_set);
   g_autoptr(CreateCompletionClosure) closure = create_completion_closure_new (object,
                                                                               invocation,
                                                                               conn,
                                                                               prompt,
+                                                                              top_k,
+                                                                              top_p,
+                                                                              seed,
+                                                                              seed_set,
                                                                               max_tokens);
 
   ggml_service_ref_model_async (conn->parent_state,
