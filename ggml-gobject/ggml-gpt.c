@@ -224,8 +224,8 @@ ggml_nn_causal_mha_ar_layer (GGMLContext *context,
   g_autoptr(GGMLTensor) kq = ggml_op_mul_mat (context, permuted_per_head_memory_k, permuted_q_head);
   g_autoptr(GGMLTensor) scale_factor = ggml_context_new_scalar_f32 (context, 1.0 / sqrt (n_embd / nhead));
   g_autoptr(GGMLTensor) kq_scaled = ggml_op_scale_inplace (context, kq, scale_factor);
-  g_autoptr(GGMLTensor) kq_masked = ggml_op_diag_mask_inf_inplace (context, kq_scaled, n_past);
-  g_autoptr(GGMLTensor) kq_softmax = ggml_op_soft_max_inplace (context, kq_masked);
+  g_autoptr(GGMLTensor) kq_masked = ggml_op_diag_mask_inf (context, kq_scaled, n_past);
+  g_autoptr(GGMLTensor) kq_softmax = ggml_op_soft_max (context, kq_masked);
 
   /* Now that we have the attention matrix, compute A(KQ)V */
   g_autoptr(GGMLTensor) kqv = ggml_op_mul_mat (context, permuted_per_head_memory_v_contiguous, kq_softmax);

@@ -172,8 +172,8 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
 
     const KQ = GGML.op_mul_mat(context, K, Q);
     const KQ_scaled = GGML.op_scale_inplace(context, KQ, context.new_scalar_f32(1.0 / Math.sqrt(n_embd / nhead)));
-    const KQ_masked = GGML.op_diag_mask_inf_inplace(context, KQ_scaled, n_past);
-    const KQ_soft_max = GGML.op_soft_max_inplace(context, KQ_masked);
+    const KQ_masked = GGML.op_diag_mask_inf(context, KQ_scaled, n_past);
+    const KQ_soft_max = GGML.op_soft_max(context, KQ_masked);
     const V_trans = GGML.op_cpy(
       context,
       GGML.op_permute(
