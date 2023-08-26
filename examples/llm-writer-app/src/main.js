@@ -267,6 +267,10 @@ class DBusCursorManager {
         quantization_type_str,
         base_text,
         256,
+        new GLib.Variant("a{sv}", {
+          "top_k": new GLib.Variant("u", 500),
+          "top_p": new GLib.Variant("d", 0.5)
+        }),
         cancellable,
         (obj, result) => {
           if (!this._destroyed) {
