@@ -1,17 +1,24 @@
 gnome = import('gnome')
 
+subdir('dbus')
+
 api_version = '0'
 ggml_gobject_headers_subdir = 'ggml-gobject'
 
 ggml_gobject_toplevel_introspectable_headers = files([
+  'ggml-argmax-language-model-sampler.h',
   'ggml-cached-model.h',
+  'ggml-closure.h',
   'ggml-compute-graph.h',
   'ggml-compute-plan.h',
   'ggml-context.h',
+  'ggml-execution-memory.h',
+  'ggml-functional-language-model-sampler.h',
   'ggml-gobject.h',
   'ggml-gpt.h',
   'ggml-hyperparameters.h',
   'ggml-language-model.h',
+  'ggml-language-model-sampler.h',
   'ggml-model-config.h',
   'ggml-model-desc.h',
   'ggml-model.h',
@@ -19,17 +26,23 @@ ggml_gobject_toplevel_introspectable_headers = files([
   'ggml-quantize.h',
   'ggml-tensor.h',
   'ggml-token-dictionary.h',
+  'ggml-top-k-top-p-language-model-sampler.h',
   'ggml-types.h',
 ])
 ggml_gobject_toplevel_introspectable_sources = files([
+  'ggml-argmax-language-model-sampler.c',
   'ggml-cached-model.c',
+  'ggml-closure.c',
   'ggml-compute-graph.c',
   'ggml-compute-plan.c',
   'ggml-context.c',
+  'ggml-execution-memory.c',
+  'ggml-functional-language-model-sampler.c',
   'ggml-gobject.c',
   'ggml-gpt.c',
   'ggml-hyperparameters.c',
   'ggml-language-model.c',
+  'ggml-language-model-sampler.c',
   'ggml-model-config.c',
   'ggml-model-desc.c',
   'ggml-model.c',
@@ -37,6 +50,7 @@ ggml_gobject_toplevel_introspectable_sources = files([
   'ggml-quantize.c',
   'ggml-tensor.c',
   'ggml-token-dictionary.c',
+  'ggml-top-k-top-p-language-model-sampler.c',
   'ggml-types.c',
 ])
 ggml_gobject_toplevel_internal_sources = files([
@@ -46,6 +60,7 @@ ggml_gobject_toplevel_internal_sources = files([
 ])
 ggml_gobject_toplevel_internal_headers = files([
   'internal/ggml-async-queue-source.h',
+  'internal/ggml-closure-internal.h',
   'internal/ggml-context-internal.h',
   'internal/ggml-progress-istream.h',
   'internal/ggml-stream-internal.h',
@@ -56,17 +71,8 @@ ggml_enum_files = gnome.mkenums_simple('ggml-enum-types',
   identifier_prefix: 'GGML',
   symbol_prefix: 'ggml'
 )
-gdbus_src = gnome.gdbus_codegen(
-  'ggml-language-model-service-dbus',
-  sources: 'dbus/ggml-language-model-service.xml',
-  interface_prefix: 'org.ggml_gobject.',
-  namespace: 'GGML',
-  autocleanup: 'all',
-  object_manager: true,
-  extra_args: ['--glib-min-required', '2.64']
-)
 
-ggml_gobject_toplevel_sources = ggml_gobject_toplevel_introspectable_sources + ggml_gobject_toplevel_internal_sources + ggml_enum_files + gdbus_src
+ggml_gobject_toplevel_sources = ggml_gobject_toplevel_introspectable_sources + ggml_gobject_toplevel_internal_sources + ggml_enum_files
 
 ggml_gobject_lib = shared_library(
   'ggml-gobject',
@@ -81,7 +87,7 @@ introspection_sources = [
   ggml_gobject_toplevel_introspectable_headers,
   ggml_gobject_toplevel_introspectable_sources,
   ggml_enum_files,
-  gdbus_src
+  ggml_service_gdbus_src
 ]
 
 ggml_gobject_gir = gnome.generate_gir(

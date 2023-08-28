@@ -39,6 +39,8 @@ GGMLComputeGraph * ggml_compute_graph_new (void);
 GGMLComputeGraph * ggml_compute_graph_ref (GGMLComputeGraph *compute_graph);
 void ggml_compute_graph_unref (GGMLComputeGraph *compute_graph);
 void ggml_compute_graph_build_forward_expand (GGMLComputeGraph *compute_graph, GGMLTensor *tensor);
+size_t ggml_compute_graph_get_computation_size (GGMLComputeGraph *graph,
+                                                GGMLTensor       *result_tensor);
 GGMLComputePlan * ggml_compute_graph_plan (GGMLComputeGraph *compute_graph, int n_threads);
 gboolean ggml_compute_graph_compute (GGMLComputeGraph  *compute_graph,
                                      GGMLComputePlan   *compute_plan,

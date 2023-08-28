@@ -186,6 +186,13 @@ ggml_tensor_n_bytes (GGMLTensor *tensor)
 void
 ggml_tensor_set_data (GGMLTensor *tensor, char *data, size_t size)
 {
+  /* If the owning context is in recorder mode, this does nothing */
+  if (tensor->owning_context->alloc != NULL &&
+      ggml_allocr_is_measure (tensor->owning_context->alloc))
+    {
+      return;
+    }
+
   g_assert (size <= ggml_tensor_n_bytes (tensor));
   memcpy(tensor->tensor->data, (const void *) data, size);
 }
@@ -193,7 +200,7 @@ ggml_tensor_set_data (GGMLTensor *tensor, char *data, size_t size)
 /**
  * ggml_tensor_get_data: (skip)
  * @tensor: A #GGMLTensor
- * @out_n_bytes: An out-parameter for the number of bytes in @tensor
+ * @out_n_bytes: (nullable): An out-parameter for the number of bytes in @tensor
  *
  * Get a view into the raw bytes of @tensor and writes the number of bytes
  * into @out_n_bytes . The data is not copied.
@@ -204,8 +211,25 @@ char *
 ggml_tensor_get_data (GGMLTensor *tensor,
                       size_t *out_n_bytes)
 {
+  /* If we're in tracking mode, then we return NULL
+   * and zero, as this tensor can have no data */
+  if (tensor->owning_context->alloc != NULL &&
+      ggml_allocr_is_measure (tensor->owning_context->alloc))
+    {
+      if (out_n_bytes != NULL)
+        {
+          *out_n_bytes = 0;
+        }
+
+      return NULL;
+    }
+
   gpointer data = ggml_get_data (tensor->tensor);
-  *out_n_bytes =  ggml_tensor_n_bytes (tensor);
+
+  if (out_n_bytes != NULL)
+    {
+      *out_n_bytes =  ggml_tensor_n_bytes (tensor);
+    }
 
   return data;
 }

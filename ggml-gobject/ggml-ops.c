@@ -172,6 +172,27 @@ ggml_op_permute (GGMLContext *context,
 }
 
 /**
+ * ggml_op_diag_mask_inf:
+ * @context: A #GGMLContext
+ * @tensor: A #GGMLTensor
+ * @n_past: Number of past
+ *
+ * Causally mask the 2D input tensor with inf values
+ *
+ * Returns: (transfer full): A new #GGMLTensor
+ */
+GGMLTensor *
+ggml_op_diag_mask_inf (GGMLContext *context,
+                       GGMLTensor  *tensor,
+                       int          n_past)
+{
+  return ggml_tensor_from_tensor (context,
+                                  ggml_diag_mask_inf (context->ctx,
+                                                      tensor->tensor,
+                                                      n_past));
+}
+
+/**
  * ggml_op_diag_mask_inf_inplace:
  * @context: A #GGMLContext
  * @tensor: A #GGMLTensor
@@ -211,6 +232,27 @@ ggml_op_diag_mask_zero_inplace (GGMLContext *context,
                                   ggml_diag_mask_zero_inplace (context->ctx,
                                                                tensor->tensor,
                                                                n_past));
+}
+
+/**
+ * ggml_op_norm:
+ * @context: A #GGMLContext
+ * @tensor: A #GGMLTensor
+ * @eps: An epsilon value to add prior to normalization
+ *
+ * Normalize @tensor
+ *
+ * Returns: (transfer full): A new #GGMLTensor with the result
+ */
+GGMLTensor *
+ggml_op_norm (GGMLContext *context,
+              GGMLTensor  *tensor,
+              float        eps)
+{
+  return ggml_tensor_from_tensor (context,
+                                  ggml_norm (context->ctx,
+                                             tensor->tensor,
+                                             eps));
 }
 
 #define GGML_DEFINE_BINARY_OP_BINDING(opname) \
@@ -334,15 +376,15 @@ GGML_DEFINE_BINARY_OP_BINDING (repeat)
 GGML_DEFINE_UNARY_OP_BINDING (soft_max_inplace)
 
 /**
- * ggml_op_norm:
+ * ggml_op_soft_max:
  * @context: A #GGMLContext
  * @operand1: A #GGMLTensor
  *
- * Normalize @operand1
+ * Computes softmax over @operand1
  *
  * Returns: (transfer full): A new #GGMLTensor with the result
  */
-GGML_DEFINE_UNARY_OP_BINDING (norm)
+GGML_DEFINE_UNARY_OP_BINDING (soft_max)
 
 /**
  * ggml_op_transpose:

@@ -91,22 +91,6 @@ GGMLModelDescNode *ggml_model_desc_map (GGMLModelDescNode    *model_desc,
                                         gpointer              map_user_data);
 void ggml_model_desc_node_unref (GGMLModelDescNode *node);
 
-/**
- * GGMLModelDescFromHyperparametersFunc:
- * @param hyperparameters: (transfer none): A #GGMLHyperparameters
- * @param user_data: (transfer none) (closure): A gpointer containing user-specified data
- *
- * Create a new #GGMLModelDescNode from a #GGMLHyperparameters
- *
- * In general you would specify a callback matching this function signature
- * in order to create the model given some hyperparameters read from a file.
- *
- * Returns: (transfer full): A new #GGMLModelDescNode
- */
-typedef GGMLModelDescNode *(*GGMLModelDescFromHyperparametersFunc) (
-    GGMLHyperparameters *hyperparameters,
-    gpointer user_data);
-
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLModelDescNode, ggml_model_desc_node_unref)
 
 G_END_DECLS

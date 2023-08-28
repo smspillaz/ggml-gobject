@@ -31,7 +31,7 @@ pkg.require({
 });
 
 const System = imports.system;
-const {Gdk, GObject, Gio, GLib, Gtk, GGML} = imports.gi;
+const {Gdk, GObject, Gio, GLib, Gtk, GGML, GGMLClient} = imports.gi;
 
 const RESOURCE_PATH = 'resource:///org/ggml-gobject/LLMWriter/Application/data';
 
@@ -167,6 +167,145 @@ class ModelLoader {
   }
 }
 
+class LocalCursorManager {
+  constructor() {
+    this._model_loader = new ModelLoader();
+    this._current_cursor = null;
+    this._current_base_text = null;
+    this._destroyed = false;
+  }
+
+  with_cursor(base_text,
+              model_enum,
+              quantization_enum,
+              cancellable,
+              callback,
+              progress_callback) {
+    if (this._current_cursor !== null) {
+      return callback(this._current_cursor);
+    } else {
+      this._model_loader.with_model(
+        model_enum,
+        quantization_enum,
+        cancellable,
+        model => {
+          if (!this._destroyed) {
+            this._current_cursor = model.create_completion(base_text, 256);
+            this._current_cursor.set_sampler(new GGML.TopKTopPLanguageModelSampler({
+              top_k: 500,
+              top_p: 1.0
+            }));
+            return callback(this._current_cursor);
+          }
+        },
+        progress_callback
+      );
+    }
+  }
+
+  invalidate_cursor() {
+    this._current_cursor = null;
+  }
+
+  destroy() {
+    this._destroyed = true;
+    this.invalidate_cursor();
+  }
+}
+
+const model_enum_to_name_and_variant = (model_enum) => {
+  switch (model_enum) {
+    case GGML.DefinedLanguageModel.GPT2P117M:
+      return ["gpt2", "117M"];
+    case GGML.DefinedLanguageModel.GPT2P345M:
+      return ["gpt2", "345M"];
+    case GGML.DefinedLanguageModel.GPT2P774M:
+      return ["gpt2", "774M"];
+    case GGML.DefinedLanguageModel.GPT2P5587M:
+      return ["gpt2", "1558M"];
+    default:
+      return null;
+  }
+};
+
+const DATA_TYPE_TO_STR = Object.fromEntries(Object.keys(GGML.DataType).map(k => [GGML.DataType[k], k.toLowerCase()]));
+
+class DBusCursorManager {
+  constructor() {
+    this._loading = false;
+    this._session = null;
+    this._current_cursor = null;
+    this._current_base_text = null;
+    this._invoke_callback = null;
+    this._destroyed = false;
+  }
+
+  with_cursor(base_text,
+              model_enum,
+              quantization_enum,
+              cancellable,
+              callback,
+              progress_callback) {
+    if (this._current_cursor !== null) {
+      callback(this._current_cursor);
+      return;
+    }
+
+    if (this._loading === true) {
+      this._invoke_callback = callback;
+      return;
+    }
+
+    this._loading = true;
+    this._invoke_callback = callback;
+    const startCompletion = () => {
+      const [model_name, model_variant] = model_enum_to_name_and_variant(model_enum);
+      const quantization_type_str = DATA_TYPE_TO_STR[quantization_enum !== null ? quantization_enum : GGML.DataType.F16];
+      this._session.start_completion_async (
+        model_name,
+        model_variant,
+        quantization_type_str,
+        base_text,
+        256,
+        new GLib.Variant("a{sv}", {
+          "top_k": new GLib.Variant("u", 500),
+          "top_p": new GLib.Variant("d", 0.5)
+        }),
+        cancellable,
+        (obj, result) => {
+          if (!this._destroyed) {
+            this._current_cursor = GGMLClient.Session.start_completion_finish(result);
+            this._loading = false;
+            this._invoke_callback(this._current_cursor);
+          }
+        }
+      );
+    };
+
+    if (this._session === null) {
+      GGMLClient.Session.new_async(cancellable, (obj, result) => {
+        this._session = GGMLClient.Session.new_finish(result);
+        startCompletion();
+      });
+    } else {
+      startCompletion();
+    }
+  }
+
+  invalidate_cursor() {
+    if (this._current_cursor !== null) {
+      this._current_cursor.destroy();
+    }
+    this._current_cursor = null;
+    System.gc();
+  }
+
+  destroy() {
+    this._destroyed = true;
+    this.invalidate_cursor();
+  }
+}
+
 const makeCombobox = (listOptions, callback) => {
   const combobox = Gtk.ComboBox.new_with_model(
     list_store_from_rows(listOptions)
@@ -191,8 +330,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
   _init(params) {
     super._init(params);
 
-    this._model_loader = new ModelLoader();
-    this._cursor = null;
+    this._cursor_manager = new LocalCursorManager();
 
     const resetProgress = () => {
       this.progress_bar.set_visible(false);
@@ -216,21 +354,19 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       title: GLib.get_application_name(),
       show_close_button: true
     });
+    const menuButton = new Gtk.MenuButton({
+      visible: true,
+      popover: new Gtk.Popover({})
+    });
+    const menuImg = Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.MENU);
+    menuImg.show();
+    menuButton.add(menuImg);
+    header.pack_start(menuButton);
     this._spinner = new Gtk.Spinner({
       visible: true
     });
     const comboboxChangedCallback = () => {
-      resetProgress();
-      this._model_loader.with_model(
-        COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[modelCombobox.active],
-        COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM[quantizationCombobox.active],
-        null,
-        () => {
-          this._spinner.stop();
-          this._cursor = null;
-        },
-        progressCallback
-      );
+      maybeAbortPrediction();
     };
     const modelCombobox = makeCombobox([
       ['GPT2 117M'],
@@ -250,8 +386,38 @@ const LLMWriterAppMainWindow = GObject.registerClass({
     ], comboboxChangedCallback);
     quantizationCombobox.show();
 
-    header.pack_start(modelCombobox);
-    header.pack_start(quantizationCombobox);
+    const radioVbox = new Gtk.VBox({
+      visible: true
+    });
+
+    const localModeRadio = Gtk.RadioButton.new_with_label_from_widget(null, "Local");
+    localModeRadio.connect("toggled", () => {
+      maybeAbortPrediction();
+      this._cursor_manager.destroy();
+      this._cursor_manager = new LocalCursorManager();
+    });
+    localModeRadio.show();
+    radioVbox.pack_start(localModeRadio, false, false, 1);
+
+    const serviceModeRadio = Gtk.RadioButton.new_with_label_from_widget(localModeRadio, "DBus");
+    serviceModeRadio.connect("toggled", () => {
+      maybeAbortPrediction();
+      this._cursor_manager.destroy();
+      this._cursor_manager = new DBusCursorManager();
+    });
+    serviceModeRadio.show();
+    radioVbox.pack_start(serviceModeRadio, false, false, 1);
+
+    const menuVbox = new Gtk.VBox({
+      visible: true,
+      margin: 5,
+      spacing: 5
+    });
+    menuVbox.pack_start(modelCombobox, false, false, 1);
+    menuVbox.pack_start(quantizationCombobox, false, false, 1);
+    menuVbox.pack_start(radioVbox, false, false, 1);
+
+    menuButton.popover.add(menuVbox);
     header.pack_end(this._spinner);
     this.set_titlebar(header);
 
@@ -266,7 +432,6 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       const mark = buffer.get_mark("predictions-start");
       const beginIter = buffer.get_iter_at_mark(mark);
       const endIter = buffer.get_end_iter();
-      this._textBufferState = STATE_TEXT_EDITOR;
       buffer.delete(beginIter, endIter);
       buffer.delete_mark(mark);
     };
@@ -275,7 +440,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       this._candidateText = '';
       this.text_view.set_editable(true);
       this._spinner.stop();
-      this._cursor = null;
+      this._cursor_manager.invalidate_cursor();
       System.gc();
     };
     const maybeAbortPrediction = () => {
@@ -288,7 +453,7 @@ const LLMWriterAppMainWindow = GObject.registerClass({
       else if (this._textBufferState === STATE_WAITING) {
         resetState();
       } else if (this._textBufferState == STATE_TEXT_EDITOR) {
-        this._cursor = null;
+        this._cursor_manager.invalidate_cursor();
         System.gc();
       }
     };
@@ -342,26 +507,22 @@ const LLMWriterAppMainWindow = GObject.registerClass({
         this._spinner.start();
         buffer.create_mark("predictions-start", buffer.get_end_iter(), true);
 
-        if (this._cursor !== null) {
-          predictFunc(this._cursor, 10, null, buffer);
-        } else {
-          const text = buffer.get_text(
-            buffer.get_start_iter(),
-            buffer.get_end_iter(),
-            false
-          );
+        const text = buffer.get_text(
+          buffer.get_start_iter(),
+          buffer.get_end_iter(),
+          false
+        );
 
-          this._model_loader.with_model(
-            COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[modelCombobox.active],
-            COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM[quantizationCombobox.active],
-            this._cancellable,
-            model => {
-              this._cursor = model.create_completion(text, 256);
-              predictFunc(this._cursor, 10, text, buffer);
-            },
-            progressCallback
-          );
-        }
+        this._cursor_manager.with_cursor(
+          text,
+          COMBOBOX_ID_TO_LANGUAGE_MODEL_ENUM[modelCombobox.active],
+          COMBOBOX_ID_TO_QUANTIZATION_LEVEL_ENUM[quantizationCombobox.active],
+          this._cancellable,
+          cursor => {
+            predictFunc(cursor, 10, text, buffer);
+          },
+          progressCallback
+        );
       } else if (currentPosition > 0 &&
                  currentPosition === this._lastCursorOffset &&
                  count > 0 &&
@@ -386,6 +547,12 @@ const LLMWriterAppMainWindow = GObject.registerClass({
         }
 
         return false;
+      }
+    });
+    buffer.connect('changed', () => {
+      if (this._textBufferState === STATE_TEXT_EDITOR) {
+        maybeAbortPrediction();
+        System.gc();
       }
     });
     this.text_view.connect('backspace', () => {

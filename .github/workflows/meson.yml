@@ -49,7 +49,7 @@ jobs:
       with:
         path: ggml
         repository: ggerganov/ggml
-        ref: da3015e52487d8fdb1a05de0879cdc3fc8976bc2
+        ref: 420bb1a94cf470d1acec124fbf87bca4d44ab42d
 
     - name: Build ggml
       uses: threeal/cmake-action@v1.2.0

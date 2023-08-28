@@ -25,6 +25,7 @@
 #include <glib-object.h>
 #include <gio/gio.h>
 #include <ggml-gobject/ggml-compute-graph.h>
+#include <ggml-gobject/ggml-execution-memory.h>
 #include <ggml-gobject/ggml-hyperparameters.h>
 #include <ggml-gobject/ggml-model-desc.h>
 #include <ggml-gobject/ggml-tensor.h>
@@ -43,7 +44,7 @@ GType ggml_model_get_type (void);
  * @inputs: (transfer none): A #GVariant with inputs used for the forward computation
  * @input_parameters: (nullable) (element-type utf8 int): A #GHashTable with some parameters for the input
  * @compute_graph: (transfer none): A #GGMLComputeGraph which can be added to.
- * @mem_buffer: (transfer none) (nullable): A #GBytes memory buffer to be re-used.
+ * @execution_memory: (transfer none) (nullable): A #GGMLExecutionMemory memory buffer to be re-used.
  * @user_data: (closure): A closure with user data to evaluate the function
  * @error: A #GError out-variable
  *
@@ -59,18 +60,25 @@ typedef GGMLTensor * (*GGMLModelForwardFunc) (GGMLModel   *model,
                                               GVariant    *inputs,
                                               GHashTable  *input_parameters,
                                               GGMLComputeGraph *compute_graph,
-                                              GBytes      *mem_buffer,
+                                              GGMLExecutionMemory *execution_memory,
                                               gpointer     user_data,
                                               GError     **error);
 
 GGMLModel *ggml_model_ref (GGMLModel *model);
 void ggml_model_unref (GGMLModel *model);
 GGMLTensor *ggml_model_get (GGMLModel *model, const char *key);
+GGMLComputeGraph *ggml_model_build_graph (GGMLModel *model,
+                                          GGMLHyperparameters *hyperparameters,
+                                          GVariant *inputs,
+                                          GHashTable *forward_parameters,
+                                          GGMLExecutionMemory *execution_memory,
+                                          GGMLTensor **out_result_tensor,
+                                          GError **error);
 GGMLTensor *ggml_model_forward (GGMLModel *model,
                                 GGMLHyperparameters *hyperparameters,
                                 GVariant *inputs,
                                 GHashTable *forward_parameters,
-                                GBytes   *mem_buffer,
+                                GGMLExecutionMemory *execution_memory,
                                 GCancellable *cancellable,
                                 GError **error);
 
@@ -96,6 +104,8 @@ GGMLModel * ggml_model_load_from_istream_finish (GAsyncResult  *result,
                                                  char        ***out_loaded_keys,
                                                  GError       **error);
 
+GHashTable * ggml_new_weight_set_from_flattened_desc (GGMLContext *existing_context,
+                                                      GHashTable  *flattened_desc);
 
 GGMLModel * ggml_model_new_from_flattened_desc (GGMLContext *context,
                                                 GHashTable  *flattened_desc,

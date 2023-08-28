@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-compute-plan-internal.h
+ * ggml-gobject/internal/ggml-closure.h
  *
- * Library code for ggml-compute-plan-internal
+ * Library code for ggml-closure
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -20,19 +20,23 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <ggml/ggml.h>
+#pragma once
+
 #include <glib-object.h>
-#include <ggml-gobject/ggml-context.h>
-#include <ggml-gobject/ggml-compute-graph.h>
-#include <ggml-gobject/ggml-compute-plan.h>
-#include <ggml-gobject/ggml-types.h>
 
 G_BEGIN_DECLS
 
-struct _GGMLComputePlan {
-  struct ggml_cplan cplan;
-  GGMLTensor *cplan_work_tensor;
-  size_t ref_count;
-};
+typedef struct _GGMLClosure GGMLClosure;
+
+#define GGML_TYPE_CLOSURE (ggml_closure_get_type ())
+GType ggml_closure_get_type (void);
+
+GGMLClosure * ggml_closure_new (GCallback      callback,
+                                gpointer       user_data,
+                                GDestroyNotify user_data_destroy);
+GGMLClosure * ggml_closure_ref (GGMLClosure *closure);
+void ggml_closure_unref (GGMLClosure *closure);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GGMLClosure, ggml_closure_unref);
 
 G_END_DECLS

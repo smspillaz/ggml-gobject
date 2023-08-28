@@ -21,6 +21,7 @@
  */
 
 #include <ggml/ggml.h>
+#include <ggml/ggml-alloc.h>
 #include <glib-object.h>
 #include <ggml-gobject/ggml-context.h>
 #include <ggml-gobject/ggml-types.h>
@@ -30,6 +31,7 @@ G_BEGIN_DECLS
 struct _GGMLContext {
   GBytes *mem_buffer;
   struct ggml_context *ctx;
+  struct ggml_allocr *alloc;
   size_t ref_count;
 };
 

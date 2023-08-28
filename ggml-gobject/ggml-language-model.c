@@ -20,7 +20,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <ggml-gobject/ggml-argmax-language-model-sampler.h>
 #include <ggml-gobject/ggml-cached-model.h>
+#include <ggml-gobject/ggml-execution-memory.h>
 #include <ggml-gobject/ggml-gpt.h>
 #include <ggml-gobject/ggml-language-model.h>
 #include <ggml-gobject/ggml-quantize.h>
@@ -29,11 +31,13 @@
 
 struct _GGMLLanguageModelCompletionCursor {
   GGMLLanguageModel *language_model;
-  GBytes *execution_memory;
+  GGMLExecutionMemory *execution_memory;
+  GGMLLanguageModelSampler *sampler;
   char *prompt;
   size_t max_completion_tokens;
   size_t memory_position;
   int32_t most_recent_token;
+  gboolean is_executing;
   size_t ref_count;
 };
 
@@ -50,7 +54,8 @@ ggml_language_model_completion_cursor_unref (GGMLLanguageModelCompletionCursor *
   if (--cursor->ref_count == 0)
     {
       g_clear_pointer (&cursor->language_model, ggml_language_model_unref);
-      g_clear_pointer (&cursor->execution_memory, g_bytes_unref);
+      g_clear_pointer (&cursor->execution_memory, ggml_execution_memory_unref);
+      g_clear_pointer (&cursor->sampler, g_object_unref);
       g_clear_pointer (&cursor->prompt, g_free);
       g_clear_pointer (&cursor, g_free);
     }
@@ -61,10 +66,50 @@ G_DEFINE_BOXED_TYPE (GGMLLanguageModelCompletionCursor,
                      ggml_language_model_completion_cursor_ref,
                      ggml_language_model_completion_cursor_unref);
 
+
+/**
+ * ggml_language_model_desc_new:
+ * @weights_desc_node: A #GGMLModelDescNode describing the the model weights
+ * @memory_desc_node: (nullable): A #GGMLModelDescNode describing the memory weights
+ *
+ * Returns: (transfer full): A new #GGMLLanguageModelDescNode
+ */
+GGMLLanguageModelDesc *
+ggml_language_model_desc_new (GGMLModelDescNode *weights_desc_node,
+                              GGMLModelDescNode *memory_desc_node)
+{
+  GGMLLanguageModelDesc *language_model_desc = g_new0 (GGMLLanguageModelDesc, 1);
+  language_model_desc->weights_desc = ggml_model_desc_node_ref (weights_desc_node);
+  language_model_desc->memory_desc = memory_desc_node != NULL ? ggml_model_desc_node_ref (memory_desc_node) : NULL;
+
+  return language_model_desc;
+}
+
+GGMLLanguageModelDesc *
+ggml_language_model_desc_copy (GGMLLanguageModelDesc *language_model_desc)
+{
+  return ggml_language_model_desc_new (language_model_desc->weights_desc,
+                                       language_model_desc->memory_desc);
+}
+
+void
+ggml_language_model_desc_free (GGMLLanguageModelDesc *language_model_desc)
+{
+  g_clear_pointer (&language_model_desc->weights_desc, ggml_model_desc_node_unref);
+  g_clear_pointer (&language_model_desc->memory_desc, ggml_model_desc_node_unref);
+  g_clear_pointer (&language_model_desc, g_free);
+}
+
+G_DEFINE_BOXED_TYPE (GGMLLanguageModelDesc,
+                     ggml_language_model_desc,
+                     ggml_language_model_desc_copy,
+                     ggml_language_model_desc_free)
+
 struct _GGMLLanguageModel {
   GGMLHyperparameters *hyperparameters;
   GGMLTokenDictionary *token_dictionary;
   GGMLModel *model;
+  GGMLModelDescNode *memory_desc_node;
   size_t ref_count;
 };
 
@@ -155,45 +200,32 @@ ggml_language_model_consume_istream_magic_async (GInputStream         *istream,
  * Returns: (transfer full): A new #GGMLLanguageModel
  */
 GGMLLanguageModel *
-ggml_language_model_new (GGMLHyperparameters *hyperparameters, GGMLTokenDictionary *dictionary, GGMLModel *model)
+ggml_language_model_new (GGMLHyperparameters *hyperparameters,
+                         GGMLTokenDictionary *dictionary,
+                         GGMLModel           *model,
+                         GGMLModelDescNode   *memory_desc_node)
 {
   GGMLLanguageModel *language_model = g_new0 (GGMLLanguageModel, 1);
   language_model->hyperparameters = ggml_hyperparameters_ref (hyperparameters);
   language_model->token_dictionary = ggml_token_dictionary_ref (dictionary);
   language_model->model = ggml_model_ref (model);
+  language_model->memory_desc_node = ggml_model_desc_node_ref (memory_desc_node);
   language_model->ref_count = 1;
 
   return language_model;
 }
 
-static size_t
-argmax_f (float *elements, size_t num_elements)
-{
-  size_t max_idx = 0;
-  float max_val = -G_MAXFLOAT;
-
-  for (size_t i = 0; i < num_elements; ++i)
-    {
-      if (elements[i] > max_val)
-        {
-          max_idx = i;
-          max_val = elements[i];
-        }
-    }
-
-  return max_idx;
-}
-
 static gboolean
-ggml_language_model_forward_single_iteration (GGMLModel            *model,
-                                              GGMLHyperparameters  *hyperparameters,
-                                              GHashTable           *inference_parameters,
-                                              GBytes               *mem_buffer,
-                                              int32_t              *input_tokens,
-                                              size_t                n_input_tokens,
-                                              GCancellable         *cancellable,
-                                              int32_t              *out_token,
-                                              GError              **error)
+ggml_language_model_forward_single_iteration (GGMLModel                 *model,
+                                              GGMLHyperparameters       *hyperparameters,
+                                              GHashTable                *inference_parameters,
+                                              GGMLExecutionMemory       *execution_memory,
+                                              GGMLLanguageModelSampler  *sampler,
+                                              int32_t                   *input_tokens,
+                                              size_t                     n_input_tokens,
+                                              GCancellable              *cancellable,
+                                              int32_t                   *out_token,
+                                              GError                   **error)
 {
   int32_t n_vocab = ggml_hyperparameters_get_int32 (hyperparameters, "n_vocab");
   g_autoptr(GVariant) variant = g_variant_ref_sink(g_variant_new_fixed_array (G_VARIANT_TYPE_INT32,
@@ -204,7 +236,7 @@ ggml_language_model_forward_single_iteration (GGMLModel            *model,
                                                             hyperparameters,
                                                             variant,
                                                             inference_parameters,
-                                                            mem_buffer,
+                                                            execution_memory,
                                                             cancellable,
                                                             error);
 
@@ -217,7 +249,18 @@ ggml_language_model_forward_single_iteration (GGMLModel            *model,
   size_t logits_tensor_n_bytes;
   float *logits_tensor_data = (float *) ggml_tensor_get_data (logits_tensor, &logits_tensor_n_bytes);
   float *end_logit_data = logits_tensor_data + (((int32_t) (n_input_tokens - 1)) * n_vocab);
-  *out_token = argmax_f (end_logit_data, n_vocab);
+
+  size_t n_tokens;
+  size_t logits_shape[] = { n_vocab };
+
+  g_autofree size_t *tokens = ggml_language_model_sampler_sample_logits_tensor (sampler,
+                                                                                end_logit_data,
+                                                                                logits_shape[0],
+                                                                                logits_shape,
+                                                                                1,
+                                                                                &n_tokens);
+
+  *out_token = tokens[0];
 
   return TRUE;
 }
@@ -393,17 +436,43 @@ ggml_language_model_complete_thread_push_tokens_or_error (GGMLLanguageModelCompl
     NULL
   );
   ggml_language_model_complete_thread_queue_push (state, g_steal_pointer (&completion));
+
+  /* If this is the is_complete chunk, then we're no longer executing
+   * and can remove the gate */
+  if (is_complete == TRUE)
+    {
+      state->cursor->is_executing = FALSE;
+    }
 }
 
 static gpointer
 ggml_language_model_complete_cursor_thread_loop (gpointer data)
 {
-  GGMLLanguageModelCompleteState *state = data;
+  g_autoptr(GGMLLanguageModelCompleteState) state = data;
   g_autofree int32_t *out_prompt_tokens = NULL;
   size_t   out_n_prompt_tokens = 0;
   int32_t  n_completed_iterations = 0;
   g_autoptr(GError) error = NULL;
-  g_autoptr(GHashTable) inference_parameters = g_hash_table_new_full (g_str_hash, g_str_equal, NULL , NULL);
+  g_autoptr(GHashTable) inference_parameters = NULL;
+
+  /* Gate behind the is_executing variable. If we are already executing and
+   * re-called this function, then we have to return an error */
+  if (state->cursor->is_executing == TRUE)
+    {
+      g_autoptr(GError) error = g_error_new (G_IO_ERROR,
+                                             G_IO_ERROR_FAILED,
+                                             "Already executing on this cursor");
+      ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                                NULL,
+                                                                FALSE,
+                                                                FALSE,
+                                                                g_steal_pointer (&error));
+      return GINT_TO_POINTER (FALSE);
+    }
+
+  state->cursor->is_executing = TRUE;
+
+  inference_parameters = g_hash_table_new_full (g_str_hash, g_str_equal, NULL , NULL);
 
   /* Allocate space for a chunk buffer to save processed tokens into */
   g_autoptr(GArray) chunk_tokens = g_array_sized_new (FALSE, TRUE, sizeof (int32_t), state->chunk_size);
@@ -414,6 +483,63 @@ ggml_language_model_complete_cursor_thread_loop (gpointer data)
   chunk_tokens->len = state->chunk_size;
 
   int32_t current_chunk_index = 0;
+
+  if (state->cursor->execution_memory == NULL)
+    {
+      g_autoptr(GGMLExecutionMemory) recorder_execution_memory = ggml_execution_memory_recorder_new (state->cursor->language_model->memory_desc_node);
+
+      /* Create an input with max_completion_tokens. We have to allocate
+       * here because creating the variant will copy */
+      g_autoptr(GArray) dummy_input_array = g_array_sized_new (FALSE,
+                                                               TRUE,
+                                                               sizeof (int32_t),
+                                                               state->cursor->max_completion_tokens);
+      g_array_set_size (dummy_input_array, state->cursor->max_completion_tokens);
+
+      g_autoptr(GVariant) dummy_inputs = g_variant_ref_sink (g_variant_new_fixed_array (G_VARIANT_TYPE_INT32,
+                                                                                        dummy_input_array->data,
+                                                                                        state->cursor->max_completion_tokens,
+                                                                                        sizeof (int32_t)));
+
+      /* In this case, n_past is always zero */
+      g_hash_table_insert (inference_parameters,
+                           (gpointer) n_past_key,
+                           GINT_TO_POINTER (state->cursor->memory_position));
+
+      /* We must first do a worst-case pass through the model to
+       * determine what the real exection memory usage is */
+      g_autoptr(GGMLTensor) output_tensor = NULL;
+      g_autoptr(GGMLComputeGraph) compute_graph = ggml_model_build_graph (
+        state->cursor->language_model->model,
+        state->cursor->language_model->hyperparameters,
+        dummy_inputs,
+        inference_parameters,
+        recorder_execution_memory,
+        &output_tensor,
+        &error
+      );
+
+      if (compute_graph == NULL)
+        {
+          ggml_language_model_complete_thread_push_tokens_or_error (state,
+                                                                    NULL,
+                                                                    FALSE,
+                                                                    FALSE,
+                                                                    g_steal_pointer (&error));
+          return GINT_TO_POINTER (FALSE);
+        }
+
+      size_t execution_memory_size = ggml_compute_graph_get_computation_size (compute_graph,
+                                                                              output_tensor);
+
+      g_autoptr(GHashTable) flattened_memory_desc = ggml_model_desc_node_flatten (state->cursor->language_model->memory_desc_node);
+      g_autoptr(GHashTable) memory_weight_set = ggml_new_weight_set_from_flattened_desc (NULL, flattened_memory_desc);
+
+      state->cursor->execution_memory = ggml_execution_memory_new (
+        execution_memory_size,
+        memory_weight_set
+      );
+    }
 
   for (; n_completed_iterations < state->iterations; ++n_completed_iterations)
     {
@@ -466,6 +592,7 @@ ggml_language_model_complete_cursor_thread_loop (gpointer data)
                                                          state->cursor->language_model->hyperparameters,
                                                          inference_parameters,
                                                          state->cursor->execution_memory,
+                                                         state->cursor->sampler,
                                                          forward_input_tokens_ptr,
                                                          n_forward_input_tokens,
                                                          state->cancellable,
@@ -674,7 +801,8 @@ ggml_language_model_create_completion (GGMLLanguageModel *language_model,
 {
   GGMLLanguageModelCompletionCursor *cursor = g_new0 (GGMLLanguageModelCompletionCursor, 1);
   cursor->language_model = ggml_language_model_ref (language_model);
-  cursor->execution_memory = ggml_gpt_model_forward_pass_create_memory_buffer (max_completion_tokens);
+  cursor->execution_memory = NULL;
+  cursor->sampler = ggml_argmax_language_model_sampler_new ();
   cursor->prompt = g_strdup (prompt);
   cursor->max_completion_tokens = max_completion_tokens;
   cursor->memory_position = 0;
@@ -682,6 +810,24 @@ ggml_language_model_create_completion (GGMLLanguageModel *language_model,
 
   return cursor;
 }
+
+/**
+ * ggml_language_model_completion_cursor_set_sampler:
+ * @cursor: A #GGMLLanguageModelCompletionCursor
+ * @sampler: (transfer none): A #GGMLLanguageModelSampler
+ *
+ * Set the sampler used for this cursor. The sampler determines how the model outputs
+ * are converted into tokens. The default is to use deterministic sampling, eg,
+ * argmax sampling, but this can lead to unnatural generations.
+ */
+void
+ggml_language_model_completion_cursor_set_sampler (GGMLLanguageModelCompletionCursor *cursor,
+                                                   GGMLLanguageModelSampler *sampler)
+{
+  g_clear_object (&cursor->sampler);
+  cursor->sampler = g_object_ref (sampler);
+}
+
 
 /**
  * ggml_language_model_completion_cursor_exec_stream_async:
@@ -974,8 +1120,9 @@ ggml_language_model_completion_cursor_exec (GGMLLanguageModelCompletionCursor  *
                                                                                             async_queue,
                                                                                             cancellable);
 
-  /* Execute synchronously on the main thread */
-  ggml_language_model_complete_cursor_thread_loop (state);
+  /* Execute synchronously on the main thread. The complete function takes
+   * ownership of state, so we steal it here, as its effectively transfer-full */
+  ggml_language_model_complete_cursor_thread_loop (g_steal_pointer (&state));
 
   g_autoptr(GPtrArray) completions_ptr_array = g_ptr_array_new_full (g_async_queue_length (async_queue) + 1, g_free);
 
@@ -1081,7 +1228,8 @@ ggml_language_model_load_from_istream (GInputStream *istream,
       return NULL;
     }
 
-  g_autoptr (GGMLModelDescNode) model_desc_node = (*create_model_desc) (hyperparameters, create_model_desc_user_data);
+  g_autoptr (GGMLLanguageModelDesc) language_model_desc = (*create_model_desc) (hyperparameters,
+                                                                                create_model_desc_user_data);
 
   GGMLDataType quantized_type;
   const char **quantize_regexes = NULL;
@@ -1092,12 +1240,12 @@ ggml_language_model_load_from_istream (GInputStream *istream,
                                                                         &skip_quantize_regexes);
 
   g_autoptr(GGMLModelDescNode) postprocessed_model_desc_node = (
-    should_quantize ? ggml_configure_quantized_model_desc_by_regexes (model_desc_node,
+    should_quantize ? ggml_configure_quantized_model_desc_by_regexes (language_model_desc->weights_desc,
                                                                       quantized_type,
                                                                       quantize_regexes,
                                                                       skip_quantize_regexes,
                                                                       error) :
-                      ggml_model_desc_node_ref (model_desc_node)
+                      ggml_model_desc_node_ref (language_model_desc->weights_desc)
   );
 
   if (postprocessed_model_desc_node == NULL)
@@ -1138,7 +1286,8 @@ ggml_language_model_load_from_istream (GInputStream *istream,
 
   return ggml_language_model_new (hyperparameters,
                                   token_dictionary,
-                                  model);
+                                  model,
+                                  language_model_desc->memory_desc);
 }
 
 static struct GGMLLanguageModelDefinitions {
@@ -1214,6 +1363,7 @@ typedef struct _GGMLLanguageModelLoadFromIstreamData
 
   /* Things that get loaded as we go */
   GGMLModelDescNode *model_desc;
+  GGMLModelDescNode *memory_desc_node;
   GGMLHyperparameters *hyperparameters;
   GGMLTokenDictionary *token_dictionary;
   GGMLModel *model;
@@ -1251,6 +1401,7 @@ ggml_language_model_load_from_istream_data_free (GGMLLanguageModelLoadFromIstrea
   g_clear_pointer (&data->create_model_desc_user_data, data->create_model_desc_user_data_destroy);
   g_clear_pointer (&data->forward_func_user_data, data->forward_func_user_data_destroy);
 
+  g_clear_pointer (&data->memory_desc_node, ggml_model_desc_node_unref);
   g_clear_pointer (&data->model_desc, ggml_model_desc_node_unref);
   g_clear_pointer (&data->model, ggml_model_unref);
   g_clear_pointer (&data->hyperparameters, ggml_hyperparameters_unref);
@@ -1293,7 +1444,8 @@ ggml_language_model_load_from_istream_on_model_read (GObject *src,
   g_task_return_pointer (task,
                          ggml_language_model_new (data->hyperparameters,
                                                   data->token_dictionary,
-                                                  data->model),
+                                                  data->model,
+                                                  data->memory_desc_node),
                          (GDestroyNotify) ggml_language_model_unref);
 }
 
@@ -1351,8 +1503,9 @@ ggml_language_model_load_from_istream_on_hyperparameters_read (GObject *src,
 
   /* We can already use the hyperparameters to create the model desc. */
   data->hyperparameters = g_steal_pointer (&hyperparameters);
-  g_autoptr(GGMLModelDescNode) model_desc = (*data->create_model_desc) (data->hyperparameters,
-                                                                        data->create_model_desc_user_data);
+  g_autoptr(GGMLLanguageModelDesc) language_model_desc = (*data->create_model_desc) (data->hyperparameters,
+                                                                                     data->create_model_desc_user_data);
+  data->memory_desc_node = g_steal_pointer (&language_model_desc->memory_desc);
 
   GGMLDataType quantized_type;
   const char **quantize_regexes = NULL;
@@ -1363,12 +1516,12 @@ ggml_language_model_load_from_istream_on_hyperparameters_read (GObject *src,
                                                                         &skip_quantize_regexes);
 
   g_autoptr(GGMLModelDescNode) postprocessed_model_desc_node = (
-    should_quantize ? ggml_configure_quantized_model_desc_by_regexes (model_desc,
+    should_quantize ? ggml_configure_quantized_model_desc_by_regexes (language_model_desc->weights_desc,
                                                                       quantized_type,
                                                                       quantize_regexes,
                                                                       skip_quantize_regexes,
                                                                       &error) :
-                      ggml_model_desc_node_ref (model_desc)
+                      ggml_model_desc_node_ref (language_model_desc->weights_desc)
   );
 
   if (postprocessed_model_desc_node == NULL)
@@ -1608,6 +1761,7 @@ ggml_language_model_unref (GGMLLanguageModel *language_model)
       g_clear_pointer (&language_model->hyperparameters, ggml_hyperparameters_unref);
       g_clear_pointer (&language_model->token_dictionary, ggml_token_dictionary_unref);
       g_clear_pointer (&language_model->model, ggml_model_unref);
+      g_clear_pointer (&language_model->memory_desc_node, ggml_model_desc_node_unref);
       g_clear_pointer (&language_model, g_free);
     }
 }

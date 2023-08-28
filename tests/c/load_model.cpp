@@ -187,7 +187,7 @@ TEST(LanguageModel, run_inference_gpt2_sync)
   g_autoptr(GGMLLanguageModelCompletionCursor) cursor = ggml_language_model_create_completion (
     language_model,
     "The meaning of life is:",
-    7
+    32
   );
 
   gboolean is_complete_eos;
@@ -223,7 +223,7 @@ TEST(LanguageModel, run_inference_gpt2_async)
     g_autoptr(GGMLLanguageModelCompletionCursor) cursor = ggml_language_model_create_completion (
       language_model,
       "The meaning of life is:",
-      7
+      32
     );
 
     typedef std::tuple <GMainLoop *, GGMLLanguageModelCompletionCursor *> ClosureData;
@@ -283,7 +283,7 @@ TEST(LanguageModel, run_inference_gpt2_sync_parts)
   g_autoptr(GGMLLanguageModelCompletionCursor) cursor = ggml_language_model_create_completion (
     language_model,
     "The meaning of life is:",
-    7
+    32
   );
 
   gboolean is_complete_eos;

@@ -28,6 +28,8 @@
 #include <ggml-gobject/ggml-gpt.h>
 #include <ggml-gobject/ggml-hyperparameters.h>
 #include <ggml-gobject/ggml-language-model.h>
+#include <ggml-gobject/ggml-language-model-sampler.h>
+#include <ggml-gobject/ggml-top-k-top-p-language-model-sampler.h>
 #include <ggml-gobject/ggml-model-desc.h>
 #include <ggml-gobject/ggml-model.h>
 #include <ggml-gobject/ggml-ops.h>

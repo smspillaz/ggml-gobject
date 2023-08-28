@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-compute-plan-internal.h
+ * ggml-gobject/dbus/internal/ggml-client-language-model-cursor-internal.h
  *
- * Library code for ggml-compute-plan-internal
+ * Library code for ggml-language-model-cursor-client-internal
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -20,19 +20,14 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <ggml/ggml.h>
-#include <glib-object.h>
-#include <ggml-gobject/ggml-context.h>
-#include <ggml-gobject/ggml-compute-graph.h>
-#include <ggml-gobject/ggml-compute-plan.h>
-#include <ggml-gobject/ggml-types.h>
+#pragma once
+
+#include <ggml-gobject/dbus/ggml-client-language-model-cursor.h>
+#include <ggml-gobject/dbus/ggml-service-dbus.h>
 
 G_BEGIN_DECLS
 
-struct _GGMLComputePlan {
-  struct ggml_cplan cplan;
-  GGMLTensor *cplan_work_tensor;
-  size_t ref_count;
-};
+GGMLClientLanguageModelCursor *
+ggml_client_language_model_cursor_new (GGMLLanguageModelCompletion *proxy);
 
 G_END_DECLS

@@ -26,51 +26,58 @@ const { GLib, Gio, GObject, GGML } = imports.gi;
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 100000;
 
 function createModelDescGPT2(n_vocab, d_model, d_ff, n_layers, n_ctx) {
-  return GGML.ModelDescNode.new(
-    null,
-    {
-      "model": GGML.ModelDescNode.new(
-        null,
-        {
-          "ln_f/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-          "ln_f/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-          "wte": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
-          "wpe": GGML.ModelDescNode.new_leaf([d_model, n_ctx], GGML.DataType.F32),
-          "lm_head": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
-          ...Object.fromEntries(
-            [...Array(n_layers).keys()].map(
-            i => [
-              `h${i}`,
-              GGML.ModelDescNode.new(null, {
-                "ln_1/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "ln_1/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "ln_2/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "ln_2/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "attn/c_attn/w": GGML.ModelDescNode.new_leaf([d_model, 3 * d_model], GGML.DataType.F16),
-                "attn/c_attn/b": GGML.ModelDescNode.new_leaf([3 * d_model], GGML.DataType.F32),
-                "attn/c_proj/w": GGML.ModelDescNode.new_leaf([d_model, d_model], GGML.DataType.F16),
-                "attn/c_proj/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-                "mlp/c_fc/w": GGML.ModelDescNode.new_leaf([d_model, d_ff], GGML.DataType.F16),
-                "mlp/c_fc/b": GGML.ModelDescNode.new_leaf([d_ff], GGML.DataType.F32),
-                "mlp/c_proj/w": GGML.ModelDescNode.new_leaf([d_ff, d_model], GGML.DataType.F16),
-                "mlp/c_proj/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
-              })
-            ])
-          )
-        }
-      ),
-      "memory": GGML.ModelDescNode.new(
-        null,
-        {
-          "k": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
-          "v": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
-        }
-      )
-    }
+  return GGML.LanguageModelDesc.new(
+    GGML.ModelDescNode.new(
+      null,
+      {
+        "model": GGML.ModelDescNode.new(
+          null,
+          {
+            "ln_f/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+            "ln_f/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+            "wte": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
+            "wpe": GGML.ModelDescNode.new_leaf([d_model, n_ctx], GGML.DataType.F32),
+            "lm_head": GGML.ModelDescNode.new_leaf([d_model, n_vocab], GGML.DataType.F16),
+            ...Object.fromEntries(
+              [...Array(n_layers).keys()].map(
+              i => [
+                `h${i}`,
+                GGML.ModelDescNode.new(null, {
+                  "ln_1/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "ln_1/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "ln_2/g": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "ln_2/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "attn/c_attn/w": GGML.ModelDescNode.new_leaf([d_model, 3 * d_model], GGML.DataType.F16),
+                  "attn/c_attn/b": GGML.ModelDescNode.new_leaf([3 * d_model], GGML.DataType.F32),
+                  "attn/c_proj/w": GGML.ModelDescNode.new_leaf([d_model, d_model], GGML.DataType.F16),
+                  "attn/c_proj/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                  "mlp/c_fc/w": GGML.ModelDescNode.new_leaf([d_model, d_ff], GGML.DataType.F16),
+                  "mlp/c_fc/b": GGML.ModelDescNode.new_leaf([d_ff], GGML.DataType.F32),
+                  "mlp/c_proj/w": GGML.ModelDescNode.new_leaf([d_ff, d_model], GGML.DataType.F16),
+                  "mlp/c_proj/b": GGML.ModelDescNode.new_leaf([d_model], GGML.DataType.F32),
+                })
+              ])
+            )
+          }
+        )
+      }
+    ),
+    GGML.ModelDescNode.new(
+      null,
+      {
+        "memory": GGML.ModelDescNode.new(
+          null,
+          {
+            "k": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
+            "v": GGML.ModelDescNode.new_leaf([n_layers * n_ctx * d_model], GGML.DataType.F32),
+          }
+        )
+      }
+    )
   );
 }
 
-const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph, mem_buffer) => {
+const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph, execution_memory) => {
   const [n_vocab, n_embd, n_ff, n_layer, n_ctx, nhead, ftype] = [
     hyperparameters.get_int32('n_vocab'),
     hyperparameters.get_int32('n_embd'),
@@ -80,14 +87,15 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
     hyperparameters.get_int32('n_head'),
     hyperparameters.get_int32('ftype')
   ];
+  const key_value_memory = execution_memory.get_key_value_memory();
   const n_past = eval_parameters.n_past;
-  const memory_k = model.get("memory/k");
-  const memory_v = model.get("memory/v");
+  const memory_k = key_value_memory["memory/k"];
+  const memory_v = key_value_memory["memory/v"];
 
   /* We assume that this is enough memory for the context */
   const input_ids = inputs.deep_unpack();
   const n_tokens = input_ids.length;
-  const context = GGML.Context.new_from_mem_buffer(mem_buffer);
+  const context = execution_memory.create_context();
   const embedding_indices = context.new_tensor_1d(GGML.DataType.I32, n_tokens);
   embedding_indices.set_data_from_int32_array(input_ids);
   const position_indices = context.new_tensor_1d(GGML.DataType.I32, n_tokens);
@@ -106,7 +114,7 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
 
   for (let i = 0; i < n_layer; i++) {
     /* input layer-norm */
-    cur = GGML.op_norm(context, cur);
+    cur = GGML.op_norm(context, cur, 1e-5);
     cur = GGML.op_add(
       context,
       GGML.op_mul(
@@ -135,12 +143,6 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
      * means that we don't have to re-compute all the keys and values for every token
      * on each iteration, only the keys and values for the most recent token
      */
-    const k = GGML.op_view_1d(context, memory_k, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
-    const v = GGML.op_view_1d(context, memory_v, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
-
-    cgraph.build_forward_expand(GGML.op_cpy(context, Kcur, k));
-    cgraph.build_forward_expand(GGML.op_cpy(context, Vcur, v));
-
     const Q = GGML.op_permute(
       context,
       GGML.op_cpy(
@@ -170,8 +172,8 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
 
     const KQ = GGML.op_mul_mat(context, K, Q);
     const KQ_scaled = GGML.op_scale_inplace(context, KQ, context.new_scalar_f32(1.0 / Math.sqrt(n_embd / nhead)));
-    const KQ_masked = GGML.op_diag_mask_inf_inplace(context, KQ_scaled, n_past);
-    const KQ_soft_max = GGML.op_soft_max_inplace(context, KQ_masked);
+    const KQ_masked = GGML.op_diag_mask_inf(context, KQ_scaled, n_past);
+    const KQ_soft_max = GGML.op_soft_max(context, KQ_masked);
     const V_trans = GGML.op_cpy(
       context,
       GGML.op_permute(
@@ -227,7 +229,7 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
     /* feedforward */
 
     /* feedforward norm */
-    cur = GGML.op_norm(context, cur);
+    cur = GGML.op_norm(context, cur, 1e-5);
     cur = GGML.op_add(
       context,
       GGML.op_mul(
@@ -282,11 +284,17 @@ const gpt2ForwardPass = (model, hyperparameters, inputs, eval_parameters, cgraph
     );
 
     residual = cur;
+
+    const k = GGML.op_view_1d(context, memory_k, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
+    const v = GGML.op_view_1d(context, memory_v, n_tokens * n_embd, n_embd * (i * n_ctx + n_past));
+
+    cgraph.build_forward_expand(GGML.op_cpy(context, Kcur, k));
+    cgraph.build_forward_expand(GGML.op_cpy(context, Vcur, v));
   }
 
   /* Now we got to the end. Lets do the final norm and
     * project the outputs into logits-space */
-  cur = GGML.op_norm(context, cur);
+  cur = GGML.op_norm(context, cur, 1e-5);
   cur = GGML.op_add(
     context,
     GGML.op_mul(
@@ -432,8 +440,28 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.create_completion('The meaning of life is:', 7).exec(7, null)).toEqual(
+    expect(language_model.create_completion('The meaning of life is:', 32).exec(7, null)).toEqual(
       ['The meaning of life is: to live in a world of abundance', false]
+    );
+  });
+  it('can do a forward pass with the top-k-top-p sampler', function() {
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2P177M,
+      istream,
+      null,
+      null
+    );
+    const cursor = language_model.create_completion('The meaning of life is:', 32);
+    cursor.set_sampler(new GGML.TopKTopPLanguageModelSampler({
+      top_k: 5,
+      top_p: 0.5,
+      seed: 0,
+    }));
+
+    expect(cursor.exec(7, null)).toEqual(
+      ['The meaning of life is:\n\nThe life of the soul', false]
     );
   });
   it('can resume a forward pass through some data', function() {
@@ -445,7 +473,7 @@ describe('GGML GPT2', function() {
       null,
       null
     );
-    const cursor = language_model.create_completion('The meaning of life is:', 7);
+    const cursor = language_model.create_completion('The meaning of life is:', 32);
 
     expect(cursor.exec(4, null)).toEqual(
       ['The meaning of life is: to live in a', false]
@@ -468,7 +496,7 @@ describe('GGML GPT2', function() {
     cancellable.cancel();
 
     // Not the best test, but can't figure out how to match the error exactly
-    expect(() => language_model.create_completion('The meaning of life is:', 7).exec(7, cancellable)).toThrow();
+    expect(() => language_model.create_completion('The meaning of life is:', 32).exec(7, cancellable)).toThrow();
   });
   it('can do a forward pass through some data and stream the result', function(done) {
     const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
@@ -479,7 +507,7 @@ describe('GGML GPT2', function() {
       null,
       null
     );
-    const cursor = language_model.create_completion('The meaning of life is:', 7);
+    const cursor = language_model.create_completion('The meaning of life is:', 32);
 
     let completion_tokens = [];
 
@@ -488,6 +516,53 @@ describe('GGML GPT2', function() {
       5,
       null,
       (part, is_complete_eos) => completion_tokens.push(part),
+      (src, res) => {
+        expect(cursor.exec_stream_finish(res)).toEqual(true);
+        expect(completion_tokens.join('')).toEqual(
+          'The meaning of life is: to live in a world of abundance'
+        );
+        done();
+      }
+    );
+  });
+  it('treats multiple execution as an error', function(done) {
+    const istream = GGML.LanguageModel.stream_from_cache(GGML.DefinedLanguageModel.GPT2P177M);
+
+    const language_model = GGML.LanguageModel.load_defined_from_istream(
+      GGML.DefinedLanguageModel.GPT2P177M,
+      istream,
+      null,
+      null
+    );
+    const cursor = language_model.create_completion('The meaning of life is:', 32);
+
+    let completion_tokens = [];
+    let other_completion_tokens = [];
+    let launched_other_task = false;
+
+    cursor.exec_stream_async(
+      7,
+      5,
+      null,
+      (part, is_complete_eos) => {
+        /* We'll launch the second task here as there's no
+         * guarantee that the tasks get launched in order from the
+         * main thread */
+        if (!launched_other_task) {
+          launched_other_task = true;
+          cursor.exec_stream_async(
+            7,
+            5,
+            null,
+            (part, is_complete_eos) => other_completion_tokens.push(part),
+            (src, res) => {
+              expect(() => cursor.exec_stream_finish(res)).toThrow();
+              expect(other_completion_tokens).toEqual([]);
+            }
+          );
+        }
+        completion_tokens.push(part);
+      },
       (src, res) => {
         expect(cursor.exec_stream_finish(res)).toEqual(true);
         expect(completion_tokens.join('')).toEqual(
@@ -506,7 +581,7 @@ describe('GGML GPT2', function() {
       null,
       null
     );
-    const cursor = language_model.create_completion('The meaning of life is:', 7);
+    const cursor = language_model.create_completion('The meaning of life is:', 32);
 
     let completion_tokens = [];
 
@@ -528,7 +603,7 @@ describe('GGML GPT2', function() {
       null,
       null
     );
-    const cursor = language_model.create_completion('The meaning of life is:', 7);
+    const cursor = language_model.create_completion('The meaning of life is:', 32);
 
     let cancellable = new Gio.Cancellable({});
     /* We immediately cancel to avoid a race condition where
@@ -566,7 +641,7 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.create_completion('The meaning of life is:', 7).exec(7, null)).toEqual(
+    expect(language_model.create_completion('The meaning of life is:', 32).exec(7, null)).toEqual(
       ['The meaning of life is: to live in a world of abundance', false]
     );
   });
@@ -585,7 +660,7 @@ describe('GGML GPT2', function() {
       null
     );
 
-    expect(language_model.create_completion('The meaning of life is:', 7).exec(7, null)[0]).toMatch(
+    expect(language_model.create_completion('The meaning of life is:', 32).exec(7, null)[0]).toMatch(
       /The meaning of life is\: to live in a state of (being|peace)/,
     );
   });

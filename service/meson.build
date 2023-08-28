@@ -6,7 +6,7 @@ server_sources = files([
 
 server = executable(
   'ggml-language-model-service',
-  server_sources,
+  server_sources + ggml_service_gdbus_header,
   dependencies : [
     glib,
     gio,
@@ -14,7 +14,8 @@ server = executable(
     ggml
   ],
   link_with: [
-    ggml_gobject_lib
+    ggml_gobject_lib,
+    ggml_gobject_client_lib
   ],
   include_directories : [
     ggml_gobject_inc

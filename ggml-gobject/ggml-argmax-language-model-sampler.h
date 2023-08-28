@@ -1,7 +1,7 @@
 /*
- * ggml-gobject/ggml-compute-plan-internal.h
+ * ggml-gobject/ggml-argmax-language-model-sampler.h
  *
- * Library code for ggml-compute-plan-internal
+ * Library code for ggml-argmax-language-model-sampler
  *
  * Copyright (C) 2023 Sam Spilsbury.
  *
@@ -20,19 +20,13 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <ggml/ggml.h>
-#include <glib-object.h>
-#include <ggml-gobject/ggml-context.h>
-#include <ggml-gobject/ggml-compute-graph.h>
-#include <ggml-gobject/ggml-compute-plan.h>
-#include <ggml-gobject/ggml-types.h>
+#pragma once
+
+#include <ggml-gobject/ggml-language-model-sampler.h>
 
 G_BEGIN_DECLS
 
-struct _GGMLComputePlan {
-  struct ggml_cplan cplan;
-  GGMLTensor *cplan_work_tensor;
-  size_t ref_count;
-};
+GGMLLanguageModelSampler * ggml_argmax_language_model_sampler_new (void);
 
 G_END_DECLS
+
